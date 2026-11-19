@@ -8,7 +8,7 @@ import matlab from 'highlight.js/lib/languages/matlab'
 import latex from 'highlight.js/lib/languages/latex'
 import { Plugin } from '@tiptap/pm/state'
 import katex from 'katex'
-import { headingEdits } from './numbering'
+import { headingEdits, numberPrefix } from './numbering'
 
 export function mathHTML(latex, displayMode = false) {
   return katex.renderToString(latex || '\\square', { displayMode, throwOnError: false, trust: false, strict: 'ignore' })
@@ -93,4 +93,25 @@ export const HeadingNumbering = Extension.create({
       if (this.storage.enabled && transactions.some(tr => tr.docChanged)) return numberTransaction(state, true)
     } })]
   },
+})
+
+export const ContextNumbering = Extension.create({
+  name: 'contextNumbering',
+  priority: 1100,
+  addCommands() {
+    return { smartNumbering: (remove = false) => ({editor,state,commands}) => {
+      if(!editor.isEditable)return false
+      const {$from,$to,from,to}=state.selection
+      if($from.parent.type.name==='heading'&&$from.sameParent($to)) {
+        return commands.setCurrentHeadingNumbering(remove?false:!numberPrefix.test($from.parent.textContent))
+      }
+      // Do not turn a mixed selection containing headings or a code block into a list.
+      let unsupported=$from.parent.type.name!=='paragraph'
+      state.doc.nodesBetween(from,to,node=>{if(node.type.name==='heading'||node.type.name==='codeBlock')unsupported=true})
+      if(unsupported)return false
+      if(remove&&!editor.isActive('orderedList'))return true
+      return commands.toggleOrderedList()
+    } }
+  },
+  addKeyboardShortcuts() {return {'Mod-Shift-7':()=>{this.editor.commands.smartNumbering();return true}}}
 })

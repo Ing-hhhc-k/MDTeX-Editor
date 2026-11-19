@@ -1,10 +1,14 @@
-# MDTeX Editor 0.4
+# MDTeX Editor 0.4.1
 
 本地 Markdown 阅读与编辑器，黑白灰界面。支持所见即所得、只读阅读、源码及双向分屏，包含数学公式、表格、多语言代码高亮、图片、文件树和多文档标签页。无需账号，不上传文档。版本变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 运行
 
-双击 `release/MDTeX/MDTeX.exe`。Windows x64 免安装目录版，请保留整个 MDTeX 文件夹。
+**普通用户：[下载 Windows 免安装版](https://github.com/Ing-hhhc-k/MDTeX-Editor/releases/latest)。** 在发布页的 Assets 中下载 `MDTeX-Editor-0.4.1-win-x64.zip`，完整解压后双击最外层 `MDTeX.exe`。
+
+**启动入口就在项目最外层：双击 `MDTeX.exe`。** 源码首次使用请先运行下方的 `npm install` 和 `npm run dist`，生成运行文件。
+
+本地构建后，供其他人使用的 Windows 免安装压缩包也会放在项目最外层：**`MDTeX-Editor-0.4.1-win-x64.zip`**。解压后的最外层直接有 `MDTeX.exe`，无需再进入子文件夹；运行依赖放在 `_internal` 中。不能只下载或复制单独的启动 exe。
 
 ## 三种文件流程
 
@@ -61,7 +65,7 @@ D:/笔记/研究笔记/
 - 编辑 / 阅读 / 源码 / 分屏；文档大纲、自动草稿、专注模式。
 - 表格浮动网格点击插入；边缘 + 增行增列；右键增删；列宽拖动。
 - 数学公式模板、独立括号、希腊字母与常用字符；LaTeX 源码实时预览；独立公式居中；双击编辑。
-- 标题全文自动编号与当前标题编号。单标题按全文层级计算，保留其他标题内容，并暂停全文自动重排。
+- 工具栏 **自动编号** 统一处理正文与标题：光标在正文时使用有序列表连续编号；在标题时按全文标题层级编号。再次点击取消当前编号。单标题操作保留其他标题内容，并暂停全文自动重排；全文标题编号仍有独立入口。
 - 多语言代码块与语法高亮，左上角切换语言，右上角折叠。
 - 70%–180% 缩放、三种页宽，记忆显示设置。
 
@@ -74,7 +78,8 @@ D:/笔记/研究笔记/
 | 编辑与阅读切换 | Ctrl+Shift+P |
 | 插入公式 | Ctrl+Shift+M |
 | 全文编号 / 移除全文编号 | Ctrl+Alt+N / Ctrl+Alt+Shift+N |
-| 当前标题编号 / 移除当前编号 | Ctrl+Alt+H / Ctrl+Alt+Shift+H |
+| 自动编号（正文列表 / 标题层级） | Ctrl+Shift+7 或 Ctrl+Alt+H |
+| 移除当前编号 | Ctrl+Alt+Shift+H |
 | 缩放 / 恢复 100% | Ctrl+加减号或 Ctrl+滚轮 / Ctrl+0 |
 | 加粗 / 斜体 | Ctrl+B / Ctrl+I |
 | 撤销 / 重做 | Ctrl+Z / Ctrl+Shift+Z |
@@ -93,6 +98,7 @@ npm run test:desktop     # 基础编辑功能交互测试
 npm run test:improvements # 编号、语言、缩放交互测试
 npm run test:v03         # 表格、符号、图片及文件树交互测试
 npm run test:v04         # 三种文件流程、标签页、图片资源、ZIP、临时目录清理
+npm run test:v041        # 正文/标题上下文编号与快捷键
 npm run dist             # 生成 release/MDTeX 目录版
 ```
 

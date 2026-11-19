@@ -5,7 +5,7 @@ const assert=require('node:assert/strict')
 const {unzipSync}=require('fflate')
 ;(async()=>{
   const env={...process.env,MDTEX_TEST:'1'};delete env.ELECTRON_RUN_AS_NODE
-  const app=await _electron.launch({executablePath:path.resolve('release/MDTeX/MDTeX.exe'),env,timeout:60000})
+  const app=await _electron.launch({executablePath:path.resolve('MDTeX.exe'),env,timeout:60000})
   try{
     const page=await app.firstWindow()
     await page.waitForSelector('.prose h1')

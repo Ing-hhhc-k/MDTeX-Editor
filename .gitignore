@@ -5,3 +5,4 @@ release/
 test-results/
 playwright-report/
 *.log
+/MDTeX-Editor-*-win-x64.zip

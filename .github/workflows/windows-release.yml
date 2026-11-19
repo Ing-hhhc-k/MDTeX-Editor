@@ -1,0 +1,41 @@
+name: Windows release
+on:
+  push:
+    branches: [main]
+    paths: [package.json, 'scripts/**', '.github/workflows/windows-release.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run dist
+      - name: Publish Windows ZIP
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          $tag = "v$version"
+          $asset = "MDTeX-Editor-$version-win-x64.zip"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Output "Release $tag already exists; keeping published files unchanged."
+            exit 0
+          }
+          gh release create $tag $asset --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "MDTeX Editor $version" --notes "Windows x64 免安装版：下载 ZIP 并完整解压，双击最外层 MDTeX.exe；请保留 _internal 文件夹。"
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
