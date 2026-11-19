@@ -6,7 +6,7 @@ const path = require('node:path')
   const app = await _electron.launch({args:['.'],env,timeout:60000})
   try {
     const page = await app.firstWindow()
-    const errors=[]; page.on('pageerror',e=>errors.push(e.message))
+    const errors=[]; await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:1});dialog.showMessageBoxSync=()=>1}); page.on('pageerror',e=>errors.push(e.message))
     await page.waitForSelector('.prose h1')
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].showInactive())
     const source=page.getByRole('textbox',{name:'Markdown 源码'})

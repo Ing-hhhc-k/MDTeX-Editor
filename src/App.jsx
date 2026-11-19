@@ -5,7 +5,7 @@ import { Markdown } from '@tiptap/markdown'
 import { TableKit } from '@tiptap/extension-table'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
-import Image from '@tiptap/extension-image'
+import {LocalImage} from './LocalImage'
 import { TextSelection } from '@tiptap/pm/state'
 import { BookOpen, PenLine, Code2, Columns2, PanelLeftClose, PanelLeftOpen, FileText, Plus, FolderOpen, Save, ChevronDown, ChevronRight, Bold, Italic, Strikethrough, List, ListOrdered, Quote, Table2, Sigma, Hash, Undo2, Redo2, Link, Check, X, Search, Keyboard, MoreHorizontal, Download, ListChecks, Minus, Maximize2 } from 'lucide-react'
 import { InlineMath, BlockMath, FoldingCode, HeadingNumbering, mathHTML } from './extensions'
@@ -14,7 +14,7 @@ import { loadView, normalizeView } from './view-settings'
 import WorkspacePanel from './WorkspacePanel'
 import { symbols } from './formula-symbols'
 
-const fresh = (markdown = '', name = '未命名文档.md') => ({ id: crypto.randomUUID(), name, markdown, updated: Date.now(), numbered: false })
+const fresh = (markdown = '', name = '未命名文档.md') => ({ id: crypto.randomUUID(), name, markdown, updated: Date.now(), numbered: false, origin:'draft' })
 function loadDrafts() {
   try { const data = JSON.parse(localStorage.getItem('mdtex.drafts.v1')); if (data?.docs?.length) return data } catch {}
   const doc = fresh(welcome, '欢迎使用 MDTeX.md'); return { docs: [doc], active: doc.id }
@@ -52,6 +52,10 @@ function Modal({ title, subtitle, close, children, wide }) {
 
 export default function App() {
   const [docs, setDocs] = useState(initial.docs)
+  const [openIds,setOpenIds]=useState(initial.openIds||initial.docs.map(d=>d.id))
+  const [workspaceRoot,setWorkspaceRoot]=useState(initial.docs.find(d=>d.id===initial.active)?.workspaceRoot||null)
+  const [workspaceVersion,setWorkspaceVersion]=useState(0)
+  const [busy,setBusy]=useState(false)
   const [active, setActive] = useState(initial.active || initial.docs[0].id)
   const doc = docs.find(d => d.id === active) || docs[0]
   const [markdown, setMarkdown] = useState(doc.markdown)
@@ -76,14 +80,21 @@ export default function App() {
   const imageRef=useRef(), latexRef=useRef()
   const sourceRef = useRef(), fileRef = useRef(), richRef = useRef(), savedSelection = useRef(null), current = useRef({}), timer = useRef()
   const notify = message => { setToast(message); clearTimeout(timer.current); timer.current = setTimeout(() => setToast(''), 3500) }
+  window.mdtexImageContext={id:doc.id,path:doc.path}
   const editor = useEditor({
-    extensions: [StarterKit.configure({ codeBlock: false, link: { openOnClick: false } }), FoldingCode, Markdown, TableKit.configure({ table: { resizable: true } }), TaskList, TaskItem.configure({ nested: true }), Image.configure({ allowBase64: true }), InlineMath, BlockMath, HeadingNumbering],
+    extensions: [StarterKit.configure({ codeBlock: false, link: { openOnClick: false } }), FoldingCode, Markdown, TableKit.configure({ table: { resizable: true } }), TaskList, TaskItem.configure({ nested: true }), LocalImage, InlineMath, BlockMath, HeadingNumbering],
     content: doc.markdown, contentType: 'markdown',
     editorProps: { attributes: { class: 'prose', spellcheck: 'false', 'aria-label': '文档编辑区域' } },
-    onUpdate: ({ editor }) => { setMarkdown(editor.getMarkdown()); setRevision(n => n + 1) },
+    onUpdate: ({ editor,transaction }) => { if(transaction.docChanged)setMarkdown(editor.getMarkdown()); setRevision(n => n + 1) },
     onSelectionUpdate: () => setRevision(n => n + 1),
   })
-  current.current = { doc, markdown, mode, editor, modal, view }
+  current.current = { doc,docs, markdown, mode, editor, modal, view, busy }
+  useEffect(()=>{window.dispatchEvent(new Event('mdtex-image-context'))},[doc.id,doc.path])
+  useEffect(()=>{
+    if(!window.desktop||busy||(!doc.isDraft&&doc.path&&markdown===doc.savedMarkdown))return
+    const timer=setTimeout(()=>window.desktop.draftSync({id:doc.id,path:doc.path,text:markdown}).catch(e=>notify('临时草稿写入失败：'+e.message)),500)
+    return()=>clearTimeout(timer)
+  },[markdown,active,doc.path,busy])
   useEffect(() => {
     try { localStorage.setItem('mdtex.view.v1', JSON.stringify(view)) } catch {}
     setTableHover(null); setNumberMenu(null)
@@ -102,15 +113,15 @@ export default function App() {
     setDocs(items => items.map(d => d.id === active ? { ...d, markdown, numbered: editor?.storage.headingNumbering.enabled ?? d.numbered, updated: Date.now() } : d))
   }, [markdown])
   useEffect(() => {
-    const id = setTimeout(() => { try { localStorage.setItem('mdtex.drafts.v1', JSON.stringify({ docs, active })); setStorageError(false) } catch { setStorageError(true) } }, 400)
+    const id = setTimeout(() => { try { localStorage.setItem('mdtex.drafts.v1', JSON.stringify({ docs, active, openIds })); setStorageError(false) } catch { setStorageError(true) } }, 400)
     return () => clearTimeout(id)
-  }, [docs, active])
+  }, [docs, active,openIds])
   useEffect(() => {
     if (!editor || !['source', 'split'].includes(mode) || editor.getMarkdown() === markdown) return
     const id = setTimeout(() => { editor.commands.setContent(markdown, { contentType: 'markdown', emitUpdate: false }); setRevision(n => n + 1) }, 240)
     return () => clearTimeout(id)
   }, [markdown, mode, editor])
-  useEffect(() => { if (editor) editor.setEditable(mode !== 'read' && mode !== 'source') }, [mode, editor])
+  useEffect(() => { if (editor) editor.setEditable(!busy && mode !== 'read' && mode !== 'source') }, [mode, editor,busy])
   useEffect(() => {
     const edit = e => { savedSelection.current = editor?.state.selection; setFormula(e.detail); setModal('formula') }
     window.addEventListener('edit-formula', edit)
@@ -136,7 +147,7 @@ export default function App() {
       else if (mod && e.code === 'Slash') { e.preventDefault(); changeMode(current.current.mode === 'source' ? 'edit' : 'source') }
       else if (mod && e.shiftKey && e.code === 'KeyP') { e.preventDefault(); changeMode(current.current.mode === 'read' ? 'edit' : 'read') }
     }
-    const leave = e => { const {doc, markdown} = current.current; if (markdown !== (doc.savedMarkdown ?? '')) { e.preventDefault(); e.returnValue = '' } }
+    const leave = e => { const {doc, markdown} = current.current; if (current.current.busy||current.current.markdown !== (doc.savedMarkdown ?? '')||current.current.docsDirty) { e.preventDefault(); e.returnValue = '' } }
     window.addEventListener('keydown', key); window.addEventListener('beforeunload', leave)
     return () => { window.removeEventListener('keydown', key); window.removeEventListener('beforeunload', leave) }
   }, [editor])
@@ -149,27 +160,45 @@ export default function App() {
     const { editor, markdown, mode } = current.current
     if (editor && ['source', 'split'].includes(mode) && editor.getMarkdown() !== markdown) editor.commands.setContent(markdown, { contentType: 'markdown', emitUpdate: false })
   }
-  function changeMode(next) { syncSource(); if (['edit','read'].includes(next) && editor.storage.headingNumbering.enabled) setMarkdown(editor.getMarkdown()); setMode(next); setContext(null); setSlash(null); setTableHover(null) }
+  function changeMode(next) { if(current.current.busy)return; syncSource(); if (['edit','read'].includes(next) && editor.storage.headingNumbering.enabled) setMarkdown(editor.getMarkdown()); setMode(next); setContext(null); setSlash(null); setTableHover(null) }
   function switchDoc(next) {
+    if(current.current.busy)return
+    setOpenIds(ids=>ids.includes(next.id)?ids:[...ids,next.id])
+    setWorkspaceRoot(next.workspaceRoot||null)
+    setTab(previous=>next.workspaceRoot?'tree':previous==='tree'?'outline':previous)
+    window.mdtexImageContext={id:next.id,path:next.path}
     const old = current.current
+    if(window.desktop&&(!old.doc.path||old.markdown!==old.doc.savedMarkdown))window.desktop.draftSync({id:old.doc.id,path:old.doc.path,text:old.markdown}).catch(e=>notify(e.message))
     setDocs(items => items.map(d => d.id === old.doc.id ? { ...d, markdown: old.markdown, numbered: old.editor.storage.headingNumbering.enabled } : d))
     editor.storage.headingNumbering.enabled = !!next.numbered
     editor.commands.setContent(next.markdown, { contentType: 'markdown', emitUpdate: false })
     setActive(next.id); setMarkdown(next.markdown); setRevision(n => n + 1); setSlash(null)
   }
-  function newDoc() { const next = fresh(); setDocs(items => [...items, next]); switchDoc(next); setMode('edit'); setTimeout(() => editor.commands.focus(), 50) }
-  function importDoc(text, name, path) { const next = { ...fresh(text, name), path, savedMarkdown: text }; setDocs(items => [...items, next]); switchDoc(next); notify('文档已打开') }
+  async function newDoc() {
+    if(current.current.busy)return
+    const next=fresh()
+    try{if(window.desktop)await window.desktop.draftSync({id:next.id,text:''});setDocs(items=>[...items,next]);switchDoc(next);setMode('edit');setTimeout(()=>editor.commands.focus(),50)}catch(e){notify(e.message)}
+  }
+  function closeTab(id){const rest=openIds.filter(item=>item!==id);setOpenIds(rest);if(active===id){if(rest.length)switchDoc(docs.find(d=>d.id===rest[0]));else newDoc()}}
+  async function openFolder(){if(current.current.busy)return;if(!window.desktop)return notify('请使用桌面版');try{const root=await window.desktop.workspace.open();if(root){setWorkspaceRoot(root);setTab('tree')}}catch(e){notify(e.message)}}
+  function importDoc(text, name, path,metadata={}) { const next = { ...fresh(text, name), path, savedMarkdown: text,origin:path?'file':'draft',...metadata }; setDocs(items => [...items, next]); switchDoc(next); notify('文档已打开') }
   function openWorkspaceDoc(file) {
-    const existing=docs.find(d=>d.path===file.path)
+    const existing=current.current.docs.find(d=>d.path===file.path)
     if(existing) switchDoc(existing)
-    else importDoc(file.text,file.name,file.path)
+    else importDoc(file.text,file.name,file.path,file)
     setMode('edit')
   }
   function renameWorkspaceDoc(result) {
     setDocs(items=>items.map(d=>d.path===result.old?{...d,path:result.path,name:result.name}:d))
   }
-  function detachWorkspaceDoc(path) {
-    setDocs(items=>items.map(d=>d.path===path?{...d,path:undefined,savedMarkdown:undefined,name:d.name.replace(/\.md$/i,'')+'（已删除的草稿）.md'}:d))
+  async function detachWorkspaceDoc(path) {
+    const list=current.current.docs.filter(d=>d.path===path)
+    for(const original of list){
+      const text=original.id===current.current.doc.id?current.current.markdown:original.markdown
+      const result=window.desktop?await window.desktop.detachDraft({id:original.id,path,text}):{text}
+      setDocs(items=>items.map(d=>d.id===original.id?{...d,path:undefined,workspaceRoot:null,origin:"draft",savedMarkdown:undefined,markdown:result.text,name:d.name.replace(/\.md$/i,"")+"（已删除的草稿）.md"}:d))
+      if(current.current.doc.id===original.id){window.mdtexImageContext={id:original.id};editor.commands.setContent(result.text,{contentType:"markdown",emitUpdate:false});setMarkdown(result.text)}
+    }
   }
   async function insertImageFile(file) {
     const snapshot=current.current
@@ -183,10 +212,13 @@ export default function App() {
       if(current.current.doc.id!==snapshot.doc.id)return notify('文档已切换，请重新插入图片')
       if(current.current.markdown!==snapshot.markdown||current.current.mode!==snapshot.mode)return notify('文档已变化，请在新的光标位置重新插入图片')
       if(current.current.mode==='read')return notify('请切换到编辑模式后插入图片')
+      let src=data
+      if(window.desktop){const imported=await window.desktop.importImage({id:snapshot.doc.id,path:snapshot.doc.path,data});src=imported.src}
+      if(current.current.doc.id!==snapshot.doc.id||current.current.doc.path!==snapshot.doc.path||current.current.markdown!==snapshot.markdown)return notify('文档已变化，请重新插入图片')
       const alt=(file.name||'粘贴的图片').replace(/[\[\]\r\n]/g,'')
-      if(snapshot.mode==='source')setMarkdown(text=>text.slice(0,start)+`\n\n![${alt}](${data})\n\n`+text.slice(end))
-      else snapshot.editor.chain().focus().setTextSelection({from:selection.from,to:selection.to}).setImage({src:data,alt}).run()
-      notify('图片已嵌入文档，保存 Markdown 后可随文件移动')
+      if(snapshot.mode==='source')setMarkdown(text=>text.slice(0,start)+`\n\n![${alt}](${src})\n\n`+text.slice(end))
+      else snapshot.editor.chain().focus().setTextSelection({from:selection.from,to:selection.to}).setImage({src,alt}).run()
+      notify('图片已暂存；保存时将整理到 picture 文件夹')
     }catch(e){notify(e.message)}
   }
   function pasteImage(event) {
@@ -206,30 +238,47 @@ export default function App() {
     setTableMenu(tableMenu?null:{x:Math.min(r?.left||300,window.innerWidth-290),y:r?.bottom+8||180})
   }
   async function openFile() {
+    if(current.current.busy)return
     try {
-      if (window.desktop) { const file = await window.desktop.open(); if (file) importDoc(file.text, file.name, file.path) }
+      if (window.desktop) { const file = await window.desktop.open(); if (file) { const existing=current.current.docs.find(d=>d.path===file.path);if(existing)switchDoc(existing);else importDoc(file.text,file.name,file.path,file) } }
       else fileRef.current.click()
     } catch (e) { notify('打开失败：' + e.message) }
   }
-  async function saveFile(saveAs = false) {
+  async function saveFile(saveAs=false) {
+    if(current.current.busy)return
     syncSource()
-    const { doc } = current.current
-    const text = editor.storage.headingNumbering.enabled ? editor.getMarkdown() : current.current.markdown
-    if (text !== current.current.markdown) setMarkdown(text)
+    const snapshot=current.current,text=editor.storage.headingNumbering.enabled?editor.getMarkdown():snapshot.markdown
+    const sourceDoc=snapshot.doc
+    setBusy(true)
     try {
-      if (window.desktop) {
-        const result = await window.desktop.save({ text, path: saveAs ? null : doc.path, name: doc.name })
-        if (!result) return
-        setDocs(items => items.map(d => d.id === doc.id ? { ...d, path: result.path, name: result.name, savedMarkdown: text } : d))
+      if(window.desktop) {
+        const result=await window.desktop.save({id:sourceDoc.id,text,path:sourceDoc.path,name:sourceDoc.name,origin:sourceDoc.origin||'file',workspaceRoot:sourceDoc.workspaceRoot,savedText:sourceDoc.savedMarkdown,saveAs})
+        if(!result)return
+        setDocs(items=>items.map(d=>d.id===sourceDoc.id?{...d,...result,markdown:result.text,savedMarkdown:result.text,isDraft:false}:d))
+        window.mdtexImageContext={id:sourceDoc.id,path:result.path}
+        editor.commands.setContent(result.text,{contentType:'markdown',emitUpdate:false})
+        setMarkdown(result.text)
+        setWorkspaceRoot(result.workspaceRoot||null)
+        if(result.workspaceRoot)setTab('tree')
+        setWorkspaceVersion(n=>n+1)
+        notify(result.warnings?.length?result.warnings.join('；'):'文档和本地图片已保存，临时草稿已清理')
       } else {
-        const url = URL.createObjectURL(new Blob([text], {type:'text/markdown;charset=utf-8'}))
-        const a = document.createElement('a'); a.href = url; a.download = doc.name.endsWith('.md') ? doc.name : doc.name + '.md'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
-        setDocs(items => items.map(d => d.id === doc.id ? { ...d, savedMarkdown: text } : d))
+        const url=URL.createObjectURL(new Blob([text],{type:'text/markdown;charset=utf-8'}))
+        const a=document.createElement('a');a.href=url;a.download=sourceDoc.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)
+        setDocs(items=>items.map(d=>d.id===sourceDoc.id?{...d,savedMarkdown:text}:d));notify('Markdown 已下载')
       }
-      notify('Markdown 文件已保存')
-    } catch (e) { notify('保存失败：' + e.message) }
+    }catch(e){notify('保存失败：'+e.message)}finally{setBusy(false)}
+  }
+  async function exportZip() {
+    if(current.current.busy)return
+    if(!window.desktop)return notify('请使用桌面版打包文档和本地图片')
+    syncSource();const snapshot=current.current
+    setBusy(true)
+    try{const result=await window.desktop.exportZip({id:snapshot.doc.id,path:snapshot.doc.path,name:snapshot.doc.name,text:snapshot.markdown});if(result)notify('ZIP 已导出，包含当前内容和本地图片；原文档未改变')}
+    catch(e){notify('打包失败：'+e.message)}finally{setBusy(false)}
   }
   function number(enabled, scope = 'all') {
+    if(current.current.busy)return
     if (current.current.mode === 'read') return notify('请先切换到编辑或源码模式，再修改编号')
     setNumberMenu(null)
     if (scope === 'current') {
@@ -240,7 +289,7 @@ export default function App() {
     setDocs(items => items.map(d => d.id === current.current.doc.id ? { ...d, markdown: text, numbered: editor.storage.headingNumbering.enabled } : d))
     notify(scope === 'current' ? (enabled ? '已编号当前标题；全文自动重排已暂停，其他标题保持原样' : '已移除当前标题编号；全文自动重排已暂停，其他标题保持原样') : enabled ? '已启用全文自动编号，标题变化时会按层级重排' : '已移除所有标题编号')
   }
-  function openFormula() { if (current.current.mode === 'read') return notify('请先切换到编辑或源码模式，再插入公式'); syncSource(); savedSelection.current = editor.state.selection; setFormula({ latex: '\\frac{a}{b}', display: true }); setModal('formula') }
+  function openFormula() { if(current.current.busy)return; if (current.current.mode === 'read') return notify('请先切换到编辑或源码模式，再插入公式'); syncSource(); savedSelection.current = editor.state.selection; setFormula({ latex: '\\frac{a}{b}', display: true }); setModal('formula') }
   function insertFormula() {
     if (!formula.latex.trim()) return
     if (formula.pos != null) editor.chain().focus().setNodeSelection(formula.pos).updateAttributes(formula.display ? 'blockMath' : 'inlineMath', {latex:formula.latex}).run()
@@ -264,7 +313,7 @@ export default function App() {
     setTableMenu(null)
   }
   function run(command) {
-    if (!editor) return
+    if (!editor||current.current.busy) return
     if (mode === 'read') changeMode('edit')
     syncSource(); command(editor.chain().focus()).run(); setMarkdown(editor.getMarkdown())
   }
@@ -288,17 +337,18 @@ export default function App() {
   if (editor) editor.state.doc.descendants((node,pos) => { if(node.type.name === 'heading') headings.push({title:node.textContent || '未命名标题',level:node.attrs.level,pos}) })
   const title = headings[0]?.title || doc.name.replace(/\.md$/,'')
   const count = markdown.replace(/\s/g,'').length
-  const editable = mode !== 'read'
+  const editable = !busy && mode !== 'read'
+  current.current.docsDirty=docs.some(d=>d.id!==active&&d.markdown!==(d.savedMarkdown??''))
   const sourceOnly = mode === 'source'
   const formatsDisabled = sourceOnly || !editable
-  return <div className={`app ${focus ? 'focus-mode' : ''}`} onPasteCapture={pasteImage} onClick={() => { setContext(null); setNumberMenu(null); setTableMenu(null) }}>
-    <header className="app-header"><div className="brand"><span className="brand-mark">M<span>⌁</span></span><strong>MDTeX</strong><span className="brand-caption">留白之间，自有思考</span></div><div className="header-actions"><span className={`draft-status ${storageError ? 'error' : ''}`}><span/>{storageError ? '草稿空间不足，请保存文件' : '草稿已保存在本机'}</span><button className="button quiet" onClick={openFile}><FolderOpen size={16}/>打开</button><button className="button primary" onClick={() => saveFile()}><Save size={15}/>保存<span className="shortcut">Ctrl S</span></button></div></header>
+  return <div className={`app ${focus ? 'focus-mode' : ''}`} aria-busy={busy} onPasteCapture={pasteImage} onClick={() => { setContext(null); setNumberMenu(null); setTableMenu(null) }}>
+    <header className="app-header"><div className="brand"><span className="brand-mark">M<span>⌁</span></span><strong>MDTeX</strong><span className="brand-caption">留白之间，自有思考</span></div><div className="header-actions"><span className={`draft-status ${storageError ? 'error' : ''}`}><span/>{storageError ? '草稿空间不足，请保存文件' : '草稿已保存在本机'}</span><button className="button quiet" disabled={busy} onClick={openFolder}><FolderOpen size={16}/>打开文件夹</button><button className="button quiet" disabled={busy} onClick={openFile}><FolderOpen size={16}/>打开</button><button className="button quiet" disabled={busy} onClick={exportZip}><Download size={16}/>打包 ZIP</button><button className="button primary" disabled={busy} onClick={() => saveFile()}><Save size={15}/>保存<span className="shortcut">Ctrl S</span></button></div></header>
     <div className="workspace">
-      {sidebar && <aside className="sidebar"><div className="workspace-label">我的写作空间 <button className="icon-button" onClick={newDoc} title="新建文档" aria-label="新建文档"><Plus size={17}/></button></div><button className="current-document" onClick={() => setTab('files')}><span className="doc-icon"><FileText size={20}/></span><span><strong>{doc.name.replace(/\.md$/,'')}</strong><small>Markdown 文档</small></span><MoreHorizontal size={16}/></button><div className="sidebar-tabs"><button className={tab==='outline'?'selected':''} onClick={() => setTab('outline')}>文档大纲</button><button className={tab==='files'?'selected':''} onClick={() => setTab('files')}>本地草稿 <span>{docs.length}</span></button></div>{tab==='outline' ? <nav className="outline">{headings.length ? headings.map((h,i) => <button key={i} style={{paddingLeft:14 + (h.level-1)*13}} title={h.title} onClick={() => { if(mode==='source') changeMode('read'); const el=editor.view.nodeDOM(h.pos); setTimeout(() => el?.scrollIntoView({behavior:'smooth',block:'center'}),30) }}><span className="outline-dot"/>{h.title}</button>) : <p className="muted">添加标题后，大纲会出现在这里。</p>}</nav> : <div className="draft-list">{docs.map(d => <button key={d.id} className={d.id===active?'selected':''} onClick={() => switchDoc(d)}><FileText size={15}/><span>{d.name.replace(/\.md$/,'')}</span>{d.id===active && <span className="active-dot"/>}</button>)}<button className="new-draft" onClick={newDoc}><Plus size={15}/>新建空白文档</button></div>}<WorkspacePanel onOpen={openWorkspaceDoc} onRename={renameWorkspaceDoc} onDelete={detachWorkspaceDoc} notify={notify}/><div className="sidebar-footer"><span className="local-dot"/>本地优先 · 无需联网<button onClick={() => setModal('shortcuts')}><Keyboard size={16}/>快捷键指南</button></div></aside>}
-      <main className="main"><div className="document-bar"><div className="breadcrumb"><button className="icon-button" onClick={() => setSidebar(!sidebar)} title="切换侧栏" aria-label="切换侧栏">{sidebar ? <PanelLeftClose size={17}/> : <PanelLeftOpen size={17}/>}</button><span>文档</span><ChevronRight size={13}/><span className="breadcrumb-name">{doc.name}</span>{markdown !== doc.savedMarkdown && <span title="尚未保存到文件" className="unsaved-dot"/>}</div><div className="view-switch">{[['edit',PenLine,'编辑'],['read',BookOpen,'阅读'],['source',Code2,'源码'],['split',Columns2,'分屏']].map(([value,Icon,label]) => <button key={value} className={mode===value?'selected':''} onClick={() => changeMode(value)}><Icon size={14}/>{label}</button>)}</div><button className="icon-button focus-button" onClick={() => setFocus(!focus)} title="专注写作 · Esc 退出" aria-label="专注写作"><Maximize2 size={16}/></button></div>
+      {sidebar && <aside className="sidebar"><div className="workspace-label">我的写作空间 <button className="icon-button" onClick={newDoc} title="新建文档" aria-label="新建文档"><Plus size={17}/></button></div><button className="current-document" onClick={() => setTab('files')}><span className="doc-icon"><FileText size={20}/></span><span><strong>{doc.name.replace(/\.md$/,'')}</strong><small>Markdown 文档</small></span><MoreHorizontal size={16}/></button><div className="sidebar-tabs"><button className={tab==='outline'?'selected':''} onClick={() => setTab('outline')}>文档大纲</button><button className={tab==='files'?'selected':''} onClick={() => setTab('files')}>本地草稿 <span>{docs.length}</span></button>{workspaceRoot&&<button className={tab==='tree'?'selected':''} onClick={()=>setTab('tree')}>文件树</button>}</div>{tab==='tree'&&workspaceRoot?<WorkspacePanel root={workspaceRoot} refreshKey={workspaceVersion} onOpen={openWorkspaceDoc} onRename={renameWorkspaceDoc} onDelete={detachWorkspaceDoc} notify={notify}/>:tab==='outline' ? <nav className="outline">{headings.length ? headings.map((h,i) => <button key={i} style={{paddingLeft:14 + (h.level-1)*13}} title={h.title} onClick={() => { if(mode==='source') changeMode('read'); const el=editor.view.nodeDOM(h.pos); setTimeout(() => el?.scrollIntoView({behavior:'smooth',block:'center'}),30) }}><span className="outline-dot"/>{h.title}</button>) : <p className="muted">添加标题后，大纲会出现在这里。</p>}</nav> : <div className="draft-list">{docs.map(d => <button key={d.id} className={d.id===active?'selected':''} onClick={() => switchDoc(d)}><FileText size={15}/><span>{d.name.replace(/\.md$/,'')}</span>{d.id===active && <span className="active-dot"/>}</button>)}<button className="new-draft" onClick={newDoc}><Plus size={15}/>新建空白文档</button></div>}<div className="sidebar-footer"><span className="local-dot"/>本地优先 · 无需联网<button onClick={() => setModal('shortcuts')}><Keyboard size={16}/>快捷键指南</button></div></aside>}
+      <main className="main"><div className="document-tabs" role="tablist" aria-label="打开的文档">{openIds.map(id=>docs.find(d=>d.id===id)).filter(Boolean).map(d=><div key={d.id} className={d.id===active?"document-tab selected":"document-tab"}><button disabled={busy} role="tab" aria-selected={d.id===active} title={d.path||"未保存草稿"} onClick={()=>switchDoc(d)}><FileText size={14}/><span>{d.name}<small>{d.workspaceRoot?.name||"本地文档"}</small></span>{(d.id===active?markdown:d.markdown)!==(d.savedMarkdown??"")&&<i/>}</button><button disabled={busy} aria-label={"关闭标签 "+d.name} title="关闭标签，内容仍保留为草稿" onClick={()=>closeTab(d.id)}><X size={12}/></button></div>)}</div><div className="document-bar"><div className="breadcrumb"><button className="icon-button" onClick={() => setSidebar(!sidebar)} title="切换侧栏" aria-label="切换侧栏">{sidebar ? <PanelLeftClose size={17}/> : <PanelLeftOpen size={17}/>}</button><span>文档</span><ChevronRight size={13}/><span className="breadcrumb-name">{doc.name}</span>{markdown !== doc.savedMarkdown && <span title="尚未保存到文件" className="unsaved-dot"/>}</div><div className="view-switch">{[['edit',PenLine,'编辑'],['read',BookOpen,'阅读'],['source',Code2,'源码'],['split',Columns2,'分屏']].map(([value,Icon,label]) => <button key={value} className={mode===value?'selected':''} onClick={() => changeMode(value)}><Icon size={14}/>{label}</button>)}</div><button className="icon-button focus-button" onClick={() => setFocus(!focus)} title="专注写作 · Esc 退出" aria-label="专注写作"><Maximize2 size={16}/></button></div>
       <div className={`format-bar ${!editable ? 'reading-toolbar' : ''}`}><div className="format-group"><select aria-label="段落格式" disabled={formatsDisabled} value={editor?.isActive('heading') ? editor.getAttributes('heading').level : 'p'} onChange={e => run(c => e.target.value==='p' ? c.setParagraph() : c.setHeading({level:Number(e.target.value)}))}><option value="p">正文</option>{[1,2,3,4,5,6].map(n => <option key={n} value={n}>标题 {n}</option>)}</select></div><div className="format-group"><Tool icon={Bold} label="加粗 Ctrl+B" active={editor?.isActive('bold')} disabled={formatsDisabled} onClick={() => run(c=>c.toggleBold())}/><Tool icon={Italic} label="斜体 Ctrl+I" active={editor?.isActive('italic')} disabled={formatsDisabled} onClick={() => run(c=>c.toggleItalic())}/><Tool icon={Strikethrough} label="删除线" disabled={formatsDisabled} onClick={() => run(c=>c.toggleStrike())}/><Tool icon={Link} label="插入链接" disabled={formatsDisabled} onClick={() => { savedSelection.current=editor.state.selection; setSearch(editor.getAttributes('link').href||''); setModal('link') }}/></div><div className="format-group"><Tool icon={List} label="无序列表" disabled={formatsDisabled} active={editor?.isActive('bulletList')} onClick={() => run(c=>c.toggleBulletList())}/><Tool icon={ListOrdered} label="有序列表" disabled={formatsDisabled} active={editor?.isActive('orderedList')} onClick={() => run(c=>c.toggleOrderedList())}/><Tool icon={ListChecks} label="任务列表" disabled={formatsDisabled} onClick={() => run(c=>c.toggleTaskList())}/><Tool icon={Quote} label="引用" disabled={formatsDisabled} onClick={() => run(c=>c.toggleBlockquote())}/><Tool icon={Code2} label="代码块" disabled={formatsDisabled} onClick={() => run(c=>c.toggleCodeBlock())}/></div><div className="format-group insert-tools"><Tool icon={Table2} label="插入表格" disabled={!editable} onClick={openTableMenu}>表格</Tool><Tool icon={FileText} label="插入图片" disabled={!editable} onClick={()=>{syncSource();imageRef.current.click()}}>图片</Tool><Tool icon={Sigma} label="插入公式 Ctrl+Shift+M" disabled={!editable} onClick={openFormula}>公式</Tool><Tool icon={Hash} label="标题编号选项" active={doc.numbered} disabled={!editable} onClick={e => { e.stopPropagation(); const r=e.currentTarget.getBoundingClientRect(); setNumberMenu(numberMenu ? null : {x:Math.min(r.left,window.innerWidth-315),y:r.bottom+8}) }}>编号<ChevronDown size={11}/></Tool></div><div className="format-group history-tools"><Tool icon={Undo2} label="撤销 Ctrl+Z" disabled={formatsDisabled || !editor?.can().undo()} onClick={() => run(c=>c.undo())}/><Tool icon={Redo2} label="重做 Ctrl+Shift+Z" disabled={formatsDisabled || !editor?.can().redo()} onClick={() => run(c=>c.redo())}/></div><span className="toolbar-hint">{mode==='read' ? '只读预览' : '输入 / 快速插入'}</span></div>
       <div className={`document-area mode-${mode}`}>
-        {['source','split'].includes(mode) && <section className="source-pane"><div className="pane-label"><Code2 size={13}/> MARKDOWN<span>UTF-8</span></div><textarea ref={sourceRef} style={{fontSize:15*view.zoom/100}} aria-label="Markdown 源码" value={markdown} spellCheck={false} onChange={e => setMarkdown(e.target.value)} onKeyDown={e => {if(e.key==='Tab'){e.preventDefault();const start=e.currentTarget.selectionStart,end=e.currentTarget.selectionEnd;setMarkdown(markdown.slice(0,start)+'  '+markdown.slice(end));requestAnimationFrame(()=>{sourceRef.current.selectionStart=sourceRef.current.selectionEnd=start+2})}}}/></section>}
+        {['source','split'].includes(mode) && <section className="source-pane"><div className="pane-label"><Code2 size={13}/> MARKDOWN<span>UTF-8</span></div><textarea disabled={busy} ref={sourceRef} style={{fontSize:15*view.zoom/100}} aria-label="Markdown 源码" value={markdown} spellCheck={false} onChange={e => setMarkdown(e.target.value)} onKeyDown={e => {if(e.key==='Tab'){e.preventDefault();const start=e.currentTarget.selectionStart,end=e.currentTarget.selectionEnd;setMarkdown(markdown.slice(0,start)+'  '+markdown.slice(end));requestAnimationFrame(()=>{sourceRef.current.selectionStart=sourceRef.current.selectionEnd=start+2})}}}/></section>}
         <section className={`render-pane ${sourceOnly ? 'hidden' : ''}`} ref={richRef} onMouseMove={hover} onMouseLeave={e => {if(!e.relatedTarget?.closest?.('.table-edge'))setTableHover(null)}} onContextMenu={e => { const cell=e.target.closest('td,th'); if(cell && editable){e.preventDefault();selectCell(cell);setContext({x:Math.min(e.clientX,window.innerWidth-220),y:Math.min(e.clientY,window.innerHeight-250)})} }}>
           {mode==='split' && <div className="pane-label"><PenLine size={13}/> 实时预览<span>可直接编辑</span></div>}<div className="paper" style={{zoom:view.zoom/100,maxWidth:view.width==="wide"?"none":view.width==="compact"?850:1100}}><div className="paper-meta"><span>MARKDOWN DOCUMENT</span><span>{mode==='read' ? '阅读模式' : '让文字有序，让灵感自由'}</span></div><EditorContent editor={editor} onKeyUp={e => {if(e.key==='/'){const s=editor.state.selection; if(s.$from.parent.textContent==='/'){const r=editor.view.coordsAtPos(s.from);setSlash({pos:s.from-1,x:Math.min(r.left,window.innerWidth-280),y:Math.min(r.bottom+8,window.innerHeight-330)})}}else if(e.key==='Escape')setSlash(null)}}/><div className="paper-end"><span/>写到这里，也是一种进步<span/></div></div>
         </section>
