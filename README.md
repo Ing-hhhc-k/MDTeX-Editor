@@ -57,6 +57,7 @@ npm run dev            # 浏览器开发版，打开控制台显示的本机地�
 npm test               # 编号单元测试
 npm run test:desktop   # Electron 实际交互测试
 npm run test:improvements # 单标题编号、代码语言、高亮、缩放与设置恢复
+npm run test:v03       # 表格弹出网格、图片/符号、文件夹操作与权限边界
 npm run dist           # 生成 release/MDTeX 目录版
 ```
 
