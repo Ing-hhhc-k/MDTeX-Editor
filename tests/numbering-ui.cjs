@@ -3,17 +3,24 @@ const {_electron}=require('@playwright/test'),assert=require('node:assert/strict
  const env={...process.env,MDTEX_TEST:'1'};delete env.ELECTRON_RUN_AS_NODE
  const app=await _electron.launch({executablePath:process.env.MDTEX_PACKAGED_TEST?require('node:path').resolve('MDTeX.exe'):undefined,args:process.env.MDTEX_PACKAGED_TEST?[]:['.'],env,timeout:60000})
  try{
-  const page=await app.firstWindow(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.waitForSelector('.prose');await app.evaluate(({BrowserWindow,dialog})=>{BrowserWindow.getAllWindows()[0].showInactive();dialog.showMessageBoxSync=()=>1})
+  const page=await app.firstWindow(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.waitForSelector('.prose');await app.evaluate(({BrowserWindow,dialog})=>{const win=BrowserWindow.getAllWindows()[0];win.show();win.focus();dialog.showMessageBoxSync=()=>1})
   const auto=page.getByRole('button',{name:'自动编号',exact:true}),source=page.getByRole('textbox',{name:'Markdown 源码'}),mode=name=>page.getByRole('button',{name,exact:true}).click()
   const load=async text=>{await mode('源码');await source.fill(text);await mode('编辑')}
   const titles=()=>page.locator('.prose h1,.prose h2,.prose h3').allTextContents()
+  const selectHeading=async(level,index)=>{
+   const target=page.locator('.prose h'+level).nth(index)
+   await target.click()
+   // Hosted Windows desktops can restore an old DOM selection on activation.
+   // Focus the intended text position before exercising the keyboard shortcut.
+   await target.evaluate(async node=>{const editor=document.querySelector('.prose').editor;editor.commands.focus(editor.view.posAtDOM(node,0));await new Promise(requestAnimationFrame);if(editor.state.selection.$from.parent.textContent!==node.textContent)throw Error('测试光标未进入目标标题')})
+  }
   await load('# 前章\n\n# 当前章\n\n## 第一节\n\n## 第二节\n\n## 第三节 **粗体**')
   await page.locator('.prose h1').last().click();await auto.click();assert.deepEqual(await titles(),['前章','1 当前章','第一节','第二节','第三节 粗体'])
   await page.locator('.prose h2').last().click();await auto.click();assert.equal((await titles()).at(-1),'1.1 第三节 粗体')
   await page.locator('.prose h2').first().click();await auto.click();assert.deepEqual((await titles()).slice(2),['1.1 第一节','第二节','1.2 第三节 粗体'])
   await page.locator('.prose h1').first().click();await auto.click();assert.deepEqual(await titles(),['1 前章','2 当前章','2.1 第一节','第二节','2.2 第三节 粗体'])
-  await page.locator('.prose h2').nth(1).click();await page.keyboard.press('Control+Shift+7');assert.deepEqual((await titles()).slice(2),['2.1 第一节','2.2 第二节','2.3 第三节 粗体'])
-  await page.locator('.prose h2').first().click();await page.keyboard.press('Control+Alt+Shift+h');assert.deepEqual((await titles()).slice(2),['第一节','2.1 第二节','2.2 第三节 粗体']);assert.equal(await page.locator('.prose strong').innerText(),'粗体')
+  await selectHeading(2,1);await page.keyboard.press('Control+Shift+7');assert.deepEqual((await titles()).slice(2),['2.1 第一节','2.2 第二节','2.3 第三节 粗体'])
+  await selectHeading(2,0);await page.keyboard.press('Control+Alt+Shift+h');assert.deepEqual((await titles()).slice(2),['第一节','2.1 第二节','2.2 第三节 粗体']);assert.equal(await page.locator('.prose strong').innerText(),'粗体')
   await load('# 上级\n\n## 第一节\n\n## 第二节\n\n## 第三节')
   await page.locator('.prose h2').last().click();await auto.click();assert.equal((await titles()).at(-1),'1 第三节')
   await page.locator('.prose h2').first().click();await auto.click();assert.deepEqual((await titles()).slice(1),['1 第一节','第二节','2 第三节'])
