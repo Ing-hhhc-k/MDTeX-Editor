@@ -4,8 +4,8 @@ using System.IO;
 using System.Windows.Forms;
 using System.Reflection;
 using System.Text;
-[assembly: AssemblyVersion("0.5.0.0")]
-[assembly: AssemblyFileVersion("0.5.0.0")]
+[assembly: AssemblyVersion("0.5.1.0")]
+[assembly: AssemblyFileVersion("0.5.1.0")]
 [assembly: AssemblyProduct("MDTeX Editor")]
 internal static class Launcher {
   private static void UpdateLog(string home,string message) {try{File.AppendAllText(Path.Combine(home,"runner.log"),message);}catch{}}

@@ -8,7 +8,7 @@ import TaskItem from '@tiptap/extension-task-item'
 import {LocalImage} from './LocalImage'
 import { TextSelection } from '@tiptap/pm/state'
 import { BookOpen, PenLine, Code2, Columns2, PanelLeftClose, PanelLeftOpen, FileText, Plus, FolderOpen, Save, ChevronDown, ChevronRight, Bold, Italic, Strikethrough, List, ListOrdered, Quote, Table2, Sigma, Hash, Undo2, Redo2, Link, Check, X, Search, Keyboard, MoreHorizontal, Trash2, Download, ListChecks, Minus, Maximize2 } from 'lucide-react'
-import { InlineMath, BlockMath, FoldingCode, HeadingNumbering, ContextNumbering, mathHTML } from './extensions'
+import { InlineMath, BlockMath, FoldingCode, HeadingNumbering, ContextNumbering, SequentialOrderedList, mathHTML } from './extensions'
 import { welcome } from './sample'
 import { loadView, normalizeView } from './view-settings'
 import WorkspacePanel from './WorkspacePanel'
@@ -99,7 +99,7 @@ export default function App() {
   const notify = message => { setToast(message); clearTimeout(timer.current); timer.current = setTimeout(() => setToast(''), 3500) }
   window.mdtexImageContext={id:doc.id,path:doc.path}
   const editor = useEditor({
-    extensions: [StarterKit.configure({ codeBlock: false, link: { openOnClick: false } }), FoldingCode, Markdown, TableKit.configure({ table: { resizable: true } }), TaskList, TaskItem.configure({ nested: true }), LocalImage, InlineMath, BlockMath, HeadingNumbering, ContextNumbering],
+    extensions: [StarterKit.configure({ codeBlock: false, orderedList: false, link: { openOnClick: false } }), SequentialOrderedList, FoldingCode, Markdown, TableKit.configure({ table: { resizable: true } }), TaskList, TaskItem.configure({ nested: true }), LocalImage, InlineMath, BlockMath, HeadingNumbering, ContextNumbering],
     content: doc.markdown, contentType: 'markdown',
     editorProps: { attributes: { class: 'prose', spellcheck: 'false', 'aria-label': '文档编辑区域' } },
     onUpdate: ({ editor,transaction }) => { if(transaction.docChanged)setMarkdown(editor.getMarkdown()); setRevision(n => n + 1) },
@@ -181,7 +181,7 @@ export default function App() {
     const { editor, markdown, mode } = current.current
     if (editor && ['source', 'split'].includes(mode) && editor.getMarkdown() !== markdown) editor.commands.setContent(markdown, { contentType: 'markdown', emitUpdate: false })
   }
-  function changeMode(next) { if(current.current.busy)return; syncSource(); if (['edit','read'].includes(next) && editor.storage.headingNumbering.enabled) setMarkdown(editor.getMarkdown()); setMode(next); setContext(null); setSlash(null); setTableHover(null) }
+  function changeMode(next) { if(current.current.busy)return; syncSource(); if (['edit','read'].includes(next)) setMarkdown(editor.getMarkdown()); setMode(next); setContext(null); setSlash(null); setTableHover(null) }
   function switchDoc(next) {
     if(current.current.busy)return
     setOpenIds(ids=>ids.includes(next.id)?ids:[...ids,next.id])
@@ -334,7 +334,7 @@ export default function App() {
     } else { syncSource(); editor.commands.setHeadingNumbering(enabled) }
     const text = editor.getMarkdown(); setMarkdown(text)
     setDocs(items => items.map(d => d.id === current.current.doc.id ? { ...d, markdown: text, numbered: editor.storage.headingNumbering.enabled } : d))
-    notify(scope === 'current' ? (enabled ? '已编号当前标题；全文自动重排已暂停，其他标题保持原样' : '已移除当前标题编号；全文自动重排已暂停，其他标题保持原样') : enabled ? '已启用全文自动编号，标题变化时会按层级重排' : '已移除所有标题编号')
+    notify(scope === 'current' ? (enabled ? '已编号当前标题，并更新后续已编号标题' : '已移除当前编号，并更新后续已编号标题') : enabled ? '已启用全文自动编号，标题变化时会按层级重排' : '已移除所有标题编号')
   }
   function openFormula() { if(current.current.busy)return; if (current.current.mode === 'read') return notify('请先切换到编辑或源码模式，再插入公式'); syncSource(); savedSelection.current = editor.state.selection; setFormula({ latex: '\\frac{a}{b}', display: true }); setModal('formula') }
   function insertFormula() {

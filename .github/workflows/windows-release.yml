@@ -24,6 +24,10 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run dist
+      - name: Verify packaged numbering
+        env:
+          MDTEX_PACKAGED_TEST: '1'
+        run: node tests/numbering-ui.cjs
       - name: Verify packaged in-place update
         run: node tests/update-install.cjs
       - name: Publish Windows ZIP

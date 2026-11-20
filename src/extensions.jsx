@@ -6,7 +6,8 @@ import { common, createLowlight } from 'lowlight'
 import powershell from 'highlight.js/lib/languages/powershell'
 import matlab from 'highlight.js/lib/languages/matlab'
 import latex from 'highlight.js/lib/languages/latex'
-import { Plugin } from '@tiptap/pm/state'
+import { Plugin, TextSelection } from '@tiptap/pm/state'
+import { OrderedList } from '@tiptap/extension-list'
 import katex from 'katex'
 import { headingEdits, numberPrefix } from './numbering'
 
@@ -83,35 +84,102 @@ export const HeadingNumbering = Extension.create({
       const { $from, $to } = state.selection
       if ($from.parent.type.name !== 'heading' || !$from.sameParent($to)) return false
       const tr = numberTransaction(state, enabled, $from.before())
-      // Single-heading edits must not trigger a global renumbering pass.
+      // Keep only the chosen set, while maintaining its sequential numbering.
       if (dispatch) { this.storage.enabled = false; dispatch(tr || state.tr) }
       return true
     } }
   },
   addProseMirrorPlugins() {
     return [new Plugin({ appendTransaction: (transactions, oldState, state) => {
-      if (this.storage.enabled && transactions.some(tr => tr.docChanged)) return numberTransaction(state, true)
+      if (transactions.some(tr => tr.docChanged)) return numberTransaction(state, this.storage.enabled ? true : null)
     } })]
   },
 })
+
+// Markdown normally treats a blank line between items as a loose list. Here a
+// blank line ends the sequence, matching the editor's empty-paragraph behavior.
+export const SequentialOrderedList = OrderedList.extend({
+  markdownTokenizer: {
+    ...OrderedList.config.markdownTokenizer,
+    tokenize(src, tokens, lexer) {
+      const blank = src.search(/\r?\n[ \t]*\r?\n/)
+      const prefix=blank < 0 ? src : src.slice(0, blank + 1)
+      const token=OrderedList.config.markdownTokenizer.tokenize(prefix, tokens, lexer)
+      if(token&&blank>=0&&token.raw.trimEnd()===prefix.trimEnd()&&/^[ \t]*\d+[.)]\s/.test(src.slice(blank).trimStart()))token.mdtexSeparateNext=true
+      return token
+    },
+  },
+  parseMarkdown(token,helpers){
+    const node=OrderedList.config.parseMarkdown(token,helpers)
+    return token.mdtexSeparateNext?[node,{type:'paragraph'}]:node
+  },
+  addProseMirrorPlugins() {
+    return [new Plugin({props:{handlePaste:(view,event)=>{
+      if(event.clipboardData?.getData('text/html')?.trim())return false
+      const text=event.clipboardData?.getData('text/plain')||''
+      if(!/^\s*\d+[.)]\s+/.test(text)||!(/\n[ \t]*\n/.test(text)))return false
+      return this.editor.commands.insertContent(text,{contentType:'markdown'})
+    }}}),...(this.parent?.()||[])]
+  },
+})
+
+function numberParagraphGroups({state,tr,chain}) {
+  const range=state.selection.$from.blockRange(state.selection.$to)
+  if(!range)return false
+  const groups=[]
+  let pos=range.start,group=null
+  for(let i=range.startIndex;i<range.endIndex;i++){
+    const node=range.parent.child(i),end=pos+node.nodeSize
+    if(node.type.name==='paragraph'&&(node.textContent.trim()||node.content.content.some(n=>n.isAtom&&n.type.name!=='hardBreak'))){
+      if(group)group.to=end-1
+      else{group={from:pos+1,to:end-1};groups.push(group)}
+    }else group=null
+    pos=end
+  }
+  if(!groups.length)return false
+  const bookmark=tr.selection.getBookmark(),mappingStart=tr.mapping.maps.length
+  for(const {from,to} of groups.reverse()){
+    if(!chain().setTextSelection({from,to}).toggleOrderedList().run())return false
+  }
+  tr.setSelection(bookmark.map(tr.mapping.slice(mappingStart)).resolve(tr.doc))
+  return true
+}
 
 export const ContextNumbering = Extension.create({
   name: 'contextNumbering',
   priority: 1100,
   addCommands() {
-    return { smartNumbering: (remove = false) => ({editor,state,commands}) => {
+    return { smartNumbering: (remove = false) => props => {
+      const {editor,state,commands}=props
       if(!editor.isEditable)return false
       const {$from,$to,from,to}=state.selection
       if($from.parent.type.name==='heading'&&$from.sameParent($to)) {
         return commands.setCurrentHeadingNumbering(remove?false:!numberPrefix.test($from.parent.textContent))
       }
       // Do not turn a mixed selection containing headings or a code block into a list.
-      let unsupported=$from.parent.type.name!=='paragraph'
+      let unsupported=!['paragraph','doc'].includes($from.parent.type.name)
       state.doc.nodesBetween(from,to,node=>{if(node.type.name==='heading'||node.type.name==='codeBlock')unsupported=true})
       if(unsupported)return false
       if(remove&&!editor.isActive('orderedList'))return true
-      return commands.toggleOrderedList()
+      if(editor.isActive('orderedList')||editor.isActive('bulletList'))return commands.toggleOrderedList()
+      if(state.selection.empty&&!$from.parent.content.size)return commands.toggleOrderedList()
+      return numberParagraphGroups(props)
     } }
   },
-  addKeyboardShortcuts() {return {'Mod-Shift-7':()=>{this.editor.commands.smartNumbering();return true}}}
+  addKeyboardShortcuts() {return {
+    'Mod-Shift-7':()=>{this.editor.commands.smartNumbering();return true},
+    Enter:()=>{
+      const {state}=this.editor,{$from,empty}=state.selection
+      if(!empty||$from.parent.type.name!=='paragraph'||$from.parent.content.size||!this.editor.isActive('orderedList'))return false
+      if($from.node(-1).type.name!=='listItem'||$from.node(-1).childCount!==1)return false
+      return this.editor.chain().liftListItem('listItem').command(({tr})=>{
+        const at=tr.selection.$from
+        // Keep an actual blank paragraph when Enter exits the top-level list.
+        // Otherwise toggling the next paragraph would merge it back into it.
+        for(let depth=at.depth-1;depth>0;depth--)if(at.node(depth).type.name==='orderedList')return true
+        tr.insert(at.before(),state.schema.nodes.paragraph.create())
+        return true
+      }).run()
+    },
+  }}
 })

@@ -1,6 +1,6 @@
 {
   "name": "mdtex-editor",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -19,7 +19,8 @@
     "test:v042": "npm run build && node tests/v042.cjs",
     "test:v043": "npm run build && node tests/v043.cjs",
     "test:v05": "npm run build && node tests/v05.cjs",
-    "test:update": "npm run dist && node tests/update-install.cjs"
+    "test:update": "npm run dist && node tests/update-install.cjs",
+    "test:numbering": "npm run build && node tests/numbering-ui.cjs"
   },
   "dependencies": {
     "@tiptap/core": "^3.0.0",
@@ -45,7 +46,8 @@
     "prosemirror-transform": "^1.10.0",
     "prosemirror-view": "^1.42.9",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "@tiptap/extension-list": "^3.34.0"
   },
   "devDependencies": {
     "@playwright/test": "1.51.1",
