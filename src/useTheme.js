@@ -6,6 +6,7 @@ export default function useTheme(){
   const media=window.matchMedia('(prefers-color-scheme: dark)')
   const apply=()=>{const dark=theme==='dark'||(theme==='system'&&media.matches);document.documentElement.dataset.theme=dark?'dark':'light';document.documentElement.style.colorScheme=dark?'dark':'light';document.documentElement.style.backgroundColor=dark?'#262626':'#fff'}
   try{localStorage.setItem('mdtex.theme',theme)}catch{}
+  window.desktop?.setPreference('mdtex.theme',theme).catch(()=>{})
   apply();media.addEventListener('change',apply);window.desktop?.setTheme(theme).catch(()=>{})
   return()=>media.removeEventListener('change',apply)
  },[theme])

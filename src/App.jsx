@@ -19,7 +19,19 @@ import { symbols } from './formula-symbols'
 
 const fresh = (markdown = '', name = '未命名文档.md') => ({ id: crypto.randomUUID(), name, markdown, updated: Date.now(), numbered: false, origin:'draft' })
 function loadDrafts() {
-  try { const data = JSON.parse(localStorage.getItem('mdtex.drafts.v1')); if (data?.docs?.length) return data } catch {}
+  const native=window.desktop?.initialState
+  if(native){
+    for(const [key,value] of Object.entries(native.preferences||{})){try{localStorage.setItem(key,value)}catch{}}
+    if(native.session?.docs?.length)return native.session
+  }
+  try {
+    let data=JSON.parse(localStorage.getItem('mdtex.drafts.v1'))
+    if(native&&native.previous!==native.directory){
+      const remap=value=>typeof value==='string'?value.split(native.previousUrl).join(native.directoryUrl).split(native.previous+'\\').join(native.directory+'\\'):Array.isArray(value)?value.map(remap):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([key,v])=>[key,remap(v)])):value
+      data=remap(data)
+    }
+    if(data?.docs?.length)return data
+  } catch {}
   const doc = fresh(welcome, '欢迎使用 MDTeX.md'); return { docs: [doc], active: doc.id }
 }
 const initial = loadDrafts()
@@ -93,7 +105,8 @@ export default function App() {
     onUpdate: ({ editor,transaction }) => { if(transaction.docChanged)setMarkdown(editor.getMarkdown()); setRevision(n => n + 1) },
     onSelectionUpdate: () => setRevision(n => n + 1),
   })
-  current.current = { doc,docs, markdown, mode, editor, modal, view, busy }
+  current.current = { doc,docs, markdown, mode, editor, modal, view, busy,openIds,active }
+  useEffect(()=>{if(editor)window.desktop?.ready().catch(()=>{})},[editor])
   useEffect(()=>{window.dispatchEvent(new Event('mdtex-image-context'))},[doc.id,doc.path])
   useEffect(()=>{
     if(!window.desktop||busy||(!doc.isDraft&&doc.path&&markdown===doc.savedMarkdown))return
@@ -102,6 +115,7 @@ export default function App() {
   },[markdown,active,doc.path,busy])
   useEffect(() => {
     try { localStorage.setItem('mdtex.view.v1', JSON.stringify(view)) } catch {}
+    window.desktop?.setPreference('mdtex.view.v1',JSON.stringify(view)).catch(()=>{})
     setTableHover(null); setNumberMenu(null)
   }, [view])
   useEffect(() => {
@@ -118,9 +132,11 @@ export default function App() {
     setDocs(items => items.map(d => d.id === active ? { ...d, markdown, numbered: editor?.storage.headingNumbering.enabled ?? d.numbered, updated: Date.now() } : d))
   }, [markdown])
   useEffect(() => {
-    const id = setTimeout(() => { try { localStorage.setItem('mdtex.drafts.v1', JSON.stringify({ docs, active, openIds })); setStorageError(false) } catch { setStorageError(true) } }, 400)
+    const id = setTimeout(() => { try { const data={docs:docs.map(d=>d.id===active?{...d,markdown}:d),active,openIds};window.desktop?.saveSession(data);localStorage.setItem('mdtex.drafts.v1', JSON.stringify(data)); setStorageError(false) } catch { setStorageError(true) } }, 400)
     return () => clearTimeout(id)
-  }, [docs, active,openIds])
+  }, [docs, active,openIds,markdown])
+  function persistNow(){const s=current.current;const data={docs:s.docs.map(d=>d.id===s.active?{...d,markdown:s.markdown}:d),active:s.active,openIds:s.openIds};window.desktop?.saveSession(data);localStorage.setItem('mdtex.drafts.v1',JSON.stringify(data));return data}
+  async function prepareUpdate(){if(current.current.busy)throw Error('请等待当前文件操作完成');setBusy(true);try{const data=persistNow();await Promise.all(data.docs.filter(d=>!d.path||d.markdown!==d.savedMarkdown).map(d=>window.desktop.draftSync({id:d.id,path:d.path,text:d.markdown})));return true}catch(error){setBusy(false);throw error}}
   useEffect(() => {
     if (!editor || !['source', 'split'].includes(mode) || editor.getMarkdown() === markdown) return
     const id = setTimeout(() => { editor.commands.setContent(markdown, { contentType: 'markdown', emitUpdate: false }); setRevision(n => n + 1) }, 240)
@@ -152,7 +168,7 @@ export default function App() {
       else if (mod && e.code === 'Slash') { e.preventDefault(); changeMode(current.current.mode === 'source' ? 'edit' : 'source') }
       else if (mod && e.shiftKey && e.code === 'KeyP') { e.preventDefault(); changeMode(current.current.mode === 'read' ? 'edit' : 'read') }
     }
-    const leave = e => { const {doc, markdown} = current.current; if (current.current.busy||current.current.markdown !== (doc.savedMarkdown ?? '')||current.current.docsDirty) { e.preventDefault(); e.returnValue = '' } }
+    const leave = e => { try{persistNow()}catch{};const {doc, markdown} = current.current; if (current.current.busy||current.current.markdown !== (doc.savedMarkdown ?? '')||current.current.docsDirty) { e.preventDefault(); e.returnValue = '' } }
     window.addEventListener('keydown', key); window.addEventListener('beforeunload', leave)
     return () => { window.removeEventListener('keydown', key); window.removeEventListener('beforeunload', leave) }
   }, [editor])
@@ -373,7 +389,7 @@ export default function App() {
   const sourceOnly = mode === 'source'
   const formatsDisabled = sourceOnly || !editable
   return <div className={`app ${focus ? 'focus-mode' : ''}`} aria-busy={busy} onPasteCapture={pasteImage} onClick={() => { setContext(null); setNumberMenu(null); setTableMenu(null) }}>
-    <header className="app-header"><div className="brand"><span className="brand-mark">M<span>⌁</span></span><strong>MDTeX</strong><span className="brand-caption">留白之间，自有思考</span></div><div className="header-actions"><select className="theme-select" aria-label="主题" value={theme} onChange={e=>setTheme(e.target.value)}><option value="system">跟随系统</option><option value="light">浅色主题</option><option value="dark">暗色主题</option></select><UpdateNotice/><span className={`draft-status ${storageError ? 'error' : ''}`}><span/>{storageError ? '草稿空间不足，请保存文件' : '草稿已保存在本机'}</span><button className="button quiet" disabled={busy} onClick={openFolder}><FolderOpen size={16}/>打开文件夹</button><button className="button quiet" disabled={busy} onClick={openFile}><FileText size={16}/>打开md文档</button><button className="button quiet" disabled={busy} onClick={exportZip}><Download size={16}/>打包 ZIP</button><button className="button primary" disabled={busy} onClick={() => saveFile()}><Save size={15}/>保存<span className="shortcut">Ctrl S</span></button></div></header>
+    <header className="app-header"><div className="brand"><span className="brand-mark">M<span>⌁</span></span><strong>MDTeX</strong><span className="brand-caption">留白之间，自有思考</span></div><div className="header-actions"><select className="theme-select" aria-label="主题" value={theme} onChange={e=>setTheme(e.target.value)}><option value="system">跟随系统</option><option value="light">浅色主题</option><option value="dark">暗色主题</option></select><UpdateNotice prepareUpdate={prepareUpdate} releaseUpdate={()=>setBusy(false)}/><span className={`draft-status ${storageError ? 'error' : ''}`}><span/>{storageError ? '草稿空间不足，请保存文件' : '草稿已保存在本机'}</span><button className="button quiet" disabled={busy} onClick={openFolder}><FolderOpen size={16}/>打开文件夹</button><button className="button quiet" disabled={busy} onClick={openFile}><FileText size={16}/>打开md文档</button><button className="button quiet" disabled={busy} onClick={exportZip}><Download size={16}/>打包 ZIP</button><button className="button primary" disabled={busy} onClick={() => saveFile()}><Save size={15}/>保存<span className="shortcut">Ctrl S</span></button></div></header>
     <div className="workspace">
       {sidebar && <aside className="sidebar"><div className="workspace-label">我的写作空间 <button className="icon-button" onClick={newDoc} title="新建文档" aria-label="新建文档"><Plus size={17}/></button></div><button className="current-document" onClick={() => setTab('files')}><span className="doc-icon"><FileText size={20}/></span><span><strong>{doc.name.replace(/\.md$/,'')}</strong><small>Markdown 文档</small></span><MoreHorizontal size={16}/></button><div className="sidebar-tabs"><button className={tab==='outline'?'selected':''} onClick={() => setTab('outline')}>文档大纲</button><button className={tab==='files'?'selected':''} onClick={() => setTab('files')}>本地草稿 <span>{docs.length}</span></button>{workspaceRoot&&<button className={tab==='tree'?'selected':''} onClick={()=>setTab('tree')}>文件树</button>}</div>{tab==='tree'&&workspaceRoot?<WorkspacePanel root={workspaceRoot} refreshKey={workspaceVersion} onOpen={openWorkspaceDoc} onRename={renameWorkspaceDoc} onDelete={detachWorkspaceDoc} notify={notify}/>:tab==='outline' ? <nav className="outline">{headings.length ? headings.map((h,i) => <button key={i} style={{paddingLeft:14 + (h.level-1)*13}} title={h.title} onClick={() => { if(mode==='source') changeMode('read'); const el=editor.view.nodeDOM(h.pos); setTimeout(() => el?.scrollIntoView({behavior:'smooth',block:'center'}),30) }}><span className="outline-dot"/>{h.title}</button>) : <p className="muted">添加标题后，大纲会出现在这里。</p>}</nav> : <div className="draft-list">{docs.map(d => <div key={d.id} className={d.id===active?"draft-row selected":"draft-row"}><button className="draft-open" title={d.path||d.name} onClick={() => switchDoc(d)}><FileText size={15}/><span>{d.name.replace(/\.md$/i,"")}</span>{d.id===active && <span className="active-dot"/>}</button><button className="draft-remove" aria-label={"删除草稿 "+d.name} title="删除本机草稿，不删除已保存的文件" onClick={()=>setDraftDelete(d)}><Trash2 size={14}/></button></div>)}<button className="new-draft" onClick={newDoc}><Plus size={15}/>新建空白文档</button></div>}<div className="sidebar-footer"><span className="local-dot"/>本地优先 · 无需联网<button onClick={() => setModal('shortcuts')}><Keyboard size={16}/>快捷键指南</button></div></aside>}
       <main className="main"><div className="document-tabs" role="tablist" aria-label="打开的文档">{openIds.map(id=>docs.find(d=>d.id===id)).filter(Boolean).map(d=><div key={d.id} className={d.id===active?"document-tab selected":"document-tab"}><button disabled={busy} role="tab" aria-selected={d.id===active} title={d.path||"未保存草稿"} onClick={()=>switchDoc(d)}><FileText size={14}/><span>{d.name}<small>{d.workspaceRoot?.name||"本地文档"}</small></span>{(d.id===active?markdown:d.markdown)!==(d.savedMarkdown??"")&&<i/>}</button><button disabled={busy} aria-label={"关闭标签 "+d.name} title="关闭标签，内容仍保留为草稿" onClick={()=>closeTab(d.id)}><X size={12}/></button></div>)}</div><div className="document-bar"><div className="breadcrumb"><button className="icon-button" onClick={() => setSidebar(!sidebar)} title="切换侧栏" aria-label="切换侧栏">{sidebar ? <PanelLeftClose size={17}/> : <PanelLeftOpen size={17}/>}</button><span>文档</span><ChevronRight size={13}/><span className="breadcrumb-name">{doc.name}</span>{markdown !== doc.savedMarkdown && <span title="尚未保存到文件" className="unsaved-dot"/>}</div><div className="view-switch">{[['edit',PenLine,'编辑'],['read',BookOpen,'阅读'],['source',Code2,'源码'],['split',Columns2,'分屏']].map(([value,Icon,label]) => <button key={value} className={mode===value?'selected':''} onClick={() => changeMode(value)}><Icon size={14}/>{label}</button>)}</div><button className="icon-button focus-button" onClick={() => setFocus(!focus)} title="专注写作 · Esc 退出" aria-label="专注写作"><Maximize2 size={16}/></button></div>

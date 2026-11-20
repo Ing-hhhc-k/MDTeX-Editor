@@ -12,7 +12,7 @@ const {_electron}=require('@playwright/test'),assert=require('node:assert/strict
   await page.getByRole('button',{name:'源码',exact:true}).click();assert.ok(Number((await page.locator('.source-pane').evaluate(el=>getComputedStyle(el).backgroundColor)).match(/\d+/)[0])<80)
   await page.getByRole('button',{name:'编辑',exact:true}).click();assert.equal(await page.locator('.prose').innerText(),text)
   await page.reload();await page.waitForSelector('.prose h1');assert.equal(await theme.inputValue(),'dark');assert.equal(await page.locator('html').getAttribute('data-theme'),'dark')
-  await page.getByRole('button',{name:/检查更新|发现新版本/,exact:true}).click();await page.getByRole('button',{name:'下载新版 ZIP'}).waitFor();await page.getByRole('button',{name:'下载新版 ZIP'}).click();assert.match(await app.evaluate(()=>globalThis.downloaded),/v0\.4\.999\/MDTeX-Editor-0\.4\.999-win-x64.zip$/)
+  await page.getByRole('button',{name:/检查更新|发现新版本/,exact:true}).click();await page.getByRole('button',{name:'下载 ZIP'}).waitFor();await page.getByRole('button',{name:'下载 ZIP'}).click();assert.match(await app.evaluate(()=>globalThis.downloaded),/v0\.4\.999\/MDTeX-Editor-0\.4\.999-win-x64.zip$/)
   await page.getByRole('checkbox',{name:/启动时检查更新/}).uncheck();await page.getByRole('button',{name:'关闭更新窗口'}).click()
   await page.screenshot({path:'test-results/dark-theme.png',timeout:10000})
   await theme.selectOption('light');await page.waitForFunction(()=>document.documentElement.dataset.theme==='light');assert.equal(await theme.inputValue(),'light')

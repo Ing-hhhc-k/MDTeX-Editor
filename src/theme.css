@@ -120,3 +120,5 @@
 :root[data-theme="dark"] .document-area,:root[data-theme="dark"] .render-pane,:root[data-theme="dark"] .source-pane{background:#303030}
 :root[data-theme="dark"] .format-bar,:root[data-theme="dark"] .document-bar,:root[data-theme="dark"] .app-header{background:#242424}
 .draft-row{display:flex;align-items:center;border-radius:5px}.draft-row.selected{background:var(--light)}.draft-row .draft-open{flex:1;min-width:0}.draft-row .draft-remove{width:30px;flex-shrink:0;padding:6px;justify-content:center}.draft-row .draft-open>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .data-location{overflow-wrap:anywhere;font-size:14px;user-select:text}
+ .update-dialog progress{width:100%;accent-color:var(--text)}

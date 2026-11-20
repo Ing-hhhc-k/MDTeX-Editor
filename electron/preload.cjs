@@ -1,5 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('desktop', {
+  initialState: ipcRenderer.sendSync('storage:bootstrap'),
+  ready: () => ipcRenderer.invoke('app:ready'),
+  saveSession: data => {const result=ipcRenderer.sendSync('storage:session',data);if(result.error)throw new Error(result.error);return result},
+  setPreference: (key,value) => ipcRenderer.invoke('storage:preference',{key,value}),
+  openDataFolder: () => ipcRenderer.invoke('storage:open'),
+  installUpdate: () => ipcRenderer.invoke('app:install-update'),
+  onUpdateProgress: fn => {const listener=(_,value)=>fn(value);ipcRenderer.on('app:update-progress',listener);return ()=>ipcRenderer.removeListener('app:update-progress',listener)},
   open: () => ipcRenderer.invoke('file:open'),
   setTheme: theme => ipcRenderer.invoke('app:theme',theme),
   checkUpdate: options => ipcRenderer.invoke('app:check-update',options),

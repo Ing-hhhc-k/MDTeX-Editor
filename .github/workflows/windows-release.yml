@@ -24,6 +24,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run dist
+      - name: Verify packaged in-place update
+        run: node tests/update-install.cjs
       - name: Publish Windows ZIP
         shell: pwsh
         env:
