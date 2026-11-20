@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('desktop', {
   downloadUpdate: () => ipcRenderer.invoke('app:download-update'),
   save: data => ipcRenderer.invoke('file:save', data),
   draftSync: data => ipcRenderer.invoke('draft:sync', data),
+  deleteDraft: data => ipcRenderer.invoke('draft:delete', data),
   detachDraft: data => ipcRenderer.invoke('draft:detach', data),
   importImage: data => ipcRenderer.invoke('image:import', data),
   previewImage: data => ipcRenderer.invoke('image:preview', data),

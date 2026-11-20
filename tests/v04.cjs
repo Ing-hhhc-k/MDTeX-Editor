@@ -27,7 +27,7 @@ const {_electron}=require('@playwright/test'),assert=require('node:assert/strict
   const archive=unzipSync(await fs.readFile(path.join(base,'export.zip'))),zipText=strFromU8(archive['第一份笔记/第一份笔记.md']);assert.match(zipText,/ZIP 中的未保存修改/);assert.equal(await fs.readFile(md,'utf8'),text)
   // Native single file: prompt, in-place picture, then optional copy into bundle.
   const single=path.join(base,'single.md');await fs.writeFile(path.join(base,'outside.png'),png);await fs.writeFile(single,'# 单个文件\n\n![local](outside.png)\n\n![web](https://example.invalid/a.png)\n')
-  await setOpen(single);await page.getByRole('button',{name:'打开',exact:true}).click();await page.getByRole('tab',{name:/single.md/}).waitFor();assert.equal(await page.getByRole('button',{name:'文件树',exact:true}).count(),0)
+  await setOpen(single);await page.getByRole('button',{name:'打开md文档',exact:true}).click();await page.getByRole('tab',{name:/single.md/}).waitFor();assert.equal(await page.getByRole('button',{name:'文件树',exact:true}).count(),0)
   await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:2})});await page.keyboard.press('Control+s');await waitSaved();assert.match(await fs.readFile(single,'utf8'),/outside.png/)
   await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:0})});await page.keyboard.press('Control+s');await waitSaved();assert.match(await fs.readFile(single,'utf8'),/picture\//);await fs.stat(path.join(base,'outside.png'))
   await app.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:1})});await page.keyboard.press('Control+s');await waitSaved();await fs.stat(path.join(base,'single','single.md'));assert.equal(await page.getByRole('button',{name:'文件树',exact:true}).count(),1)

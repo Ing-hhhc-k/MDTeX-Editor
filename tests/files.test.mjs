@@ -17,7 +17,8 @@ async function service(){
  let savePath=null,openPaths=[],choice=0
  const dialog={showOpenDialog:async()=>({canceled:!openPaths.length,filePaths:openPaths}),showSaveDialog:async()=>({canceled:!savePath,filePath:savePath}),showMessageBox:async()=>({response:choice})}
  const getWindow=()=>({webContents}),ipcMain={handle:(name,fn)=>handlers.set(name,fn)},app={getPath:()=>root}
- const documents=await createDocuments({app,ipcMain,dialog,getWindow,authorizedPaths})
+ const shell={trashItem:async file=>{await fs.rename(file,file+'.test-trash')}}
+ const documents=await createDocuments({app,ipcMain,dialog,shell,getWindow,authorizedPaths})
  registerWorkspace({ipcMain,dialog,shell:{trashItem:async()=>{}},getWindow,authorizedPaths,documents})
  const call=(name,...args)=>handlers.get(name)({sender:webContents},...args)
  return {root,documents,call,setSave:p=>savePath=p,setOpen:paths=>openPaths=paths,setChoice:n=>choice=n}
@@ -92,4 +93,21 @@ test('detached drafts copy relative local images and can be saved after the sour
  const draft=await s.call('draft:detach',{id,path:file,text:'# 尚未保存的修改\n\n![x](image.png)'})
  assert.match(draft.text,/picture\//);assert.equal(await s.call('image:preview',{id,src:imageNodes(draft.text)[0].url}),data)
  s.setSave(path.join(s.root,'rescued.md'));const result=await s.call('file:save',{id,text:draft.text,name:'rescued.md',origin:'draft'});assert.match(await fs.readFile(result.path,'utf8'),/尚未保存的修改/)
+})
+test('draft deletion clears only its own staging and blocks autosave resurrection',async()=>{
+ const s=await service(),id='delete-draft-001',other='delete-draft-002',file=path.join(s.root,'original.md');await fs.writeFile(file,'SAVED');s.setOpen([file]);await s.call('file:open')
+ const stage=await s.call('draft:sync',{id,path:file,text:'UNSAVED'});const otherStage=await s.call('draft:sync',{id:other,text:'KEEP'})
+ await s.call('image:import',{id,path:file,data});await s.call('draft:delete',{id});await assert.rejects(fs.stat(stage.directory),{code:'ENOENT'});assert.equal(await fs.readFile(file,'utf8'),'SAVED');assert.equal(await fs.readFile(path.join(otherStage.directory,'draft.md'),'utf8'),'KEEP')
+ assert.equal((await s.call('draft:sync',{id,text:'late write'})).deleted,true);await assert.rejects(fs.stat(stage.directory),{code:'ENOENT'});await assert.rejects(s.call('image:import',{id,data}),/草稿已删除/)
+ await assert.rejects(s.call('draft:delete',{id:'../../original.md'}),/标识/)
+})
+test('workspace suffix restrictions cover create/read/rename/delete, including .markdown and disguised extensions',async()=>{
+ const s=await service();s.setOpen([s.root]);await s.call('workspace:open');const dir=s.root
+ for(const name of ['other.txt','other.markdown','photo.png','fake.md.txt'])await fs.writeFile(path.join(dir,name),'KEEP')
+ const created=await s.call('workspace:create',dir,'allowed.md');assert.equal(created.text,'');await s.call('workspace:rename',dir,'allowed.md','renamed.md')
+ for(const name of ['other.txt','other.markdown','photo.png','fake.md.txt']){
+  await assert.rejects(s.call('workspace:read',dir,name),/仅支持/);await assert.rejects(s.call('workspace:delete',dir,name),/仅支持/);await assert.rejects(s.call('workspace:rename',dir,name,'new.md'),/仅支持/);assert.equal(await fs.readFile(path.join(dir,name),'utf8'),'KEEP')
+ }
+ await assert.rejects(s.call('workspace:create',dir,'new.txt'),/后缀|结尾/);await assert.rejects(s.call('workspace:rename',dir,'renamed.md','new.txt'),/仅支持/)
+ assert.equal((await s.call('workspace:list',dir,'')).filter(e=>e.editable).length,1)
 })

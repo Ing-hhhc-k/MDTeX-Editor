@@ -1,6 +1,6 @@
 {
   "name": "mdtex-editor",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -16,7 +16,8 @@
     "test:v03": "npm run build && node tests/v03.cjs",
     "test:v04": "npm run build && node tests/v04.cjs",
     "test:v041": "npm run build && node tests/v041.cjs",
-    "test:v042": "npm run build && node tests/v042.cjs"
+    "test:v042": "npm run build && node tests/v042.cjs",
+    "test:v043": "npm run build && node tests/v043.cjs"
   },
   "dependencies": {
     "@tiptap/core": "^3.0.0",

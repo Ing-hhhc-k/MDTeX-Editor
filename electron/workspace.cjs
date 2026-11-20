@@ -1,5 +1,5 @@
 const fs = require('node:fs/promises'),path = require('node:path')
-const isMarkdown = file => /\.(md|markdown)$/i.test(file)
+const isMarkdown = file => /\.md$/i.test(file)
 function registerWorkspace({ipcMain, dialog, shell, getWindow, authorizedPaths,documents}) {
   async function resolve(root,relative = '') {
     if (!documents.roots.has(root)||typeof relative!=='string') throw new Error('请先打开文件夹')
@@ -23,7 +23,7 @@ function registerWorkspace({ipcMain, dialog, shell, getWindow, authorizedPaths,d
     return entries.map(e=>({name:e.name,relative:path.join(relative,e.name),directory:e.isDirectory()&&!e.isSymbolicLink(),editable:e.isFile()&&!e.isSymbolicLink()&&isMarkdown(e.name)})).sort((a,b)=>Number(b.directory)-Number(a.directory)||a.name.localeCompare(b.name))
   })
   handle('read',read)
-  handle('create',async(root,relative)=>{const file=await resolve(root,relative);if(!isMarkdown(file))throw new Error('文件名须以 .md 或 .markdown 结尾');await fs.writeFile(file,'',{flag:'wx'});return read(root,relative)})
+  handle('create',async(root,relative)=>{const file=await resolve(root,relative);if(!isMarkdown(file))throw new Error('文件名须以 .md 结尾');await fs.writeFile(file,'',{flag:'wx'});return read(root,relative)})
   handle('rename',async(root,relative,newName)=>{
     if(typeof newName!=='string'||newName!==path.basename(newName)||/[\\/:*?"<>|]/.test(newName))throw new Error('请输入有效文件名')
     const old=await resolve(root,relative),target=await resolve(root,path.join(path.dirname(relative),newName))

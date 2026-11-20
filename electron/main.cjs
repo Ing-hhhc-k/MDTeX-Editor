@@ -11,7 +11,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(null)
   registerUpdates({app,ipcMain,net,shell,getWindow:()=>win})
   ipcMain.handle('app:theme',(event,theme)=>{if(event.sender!==win.webContents||!['system','light','dark'].includes(theme))throw new Error('无效主题');nativeTheme.themeSource=theme;win.setBackgroundColor(nativeTheme.shouldUseDarkColors?'#262626':'#fff');return true})
-  const documents=await createDocuments({app,ipcMain,dialog,getWindow:()=>win,authorizedPaths})
+  const documents=await createDocuments({app,ipcMain,dialog,shell,getWindow:()=>win,authorizedPaths})
   registerWorkspace({ipcMain,dialog,shell,getWindow:()=>win,authorizedPaths,documents})
   win = new BrowserWindow({ width: 1380, height: 920, minWidth: 820, minHeight: 600, show: false, backgroundColor: '#ffffff', title: 'MDTeX', autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true } })
   win.once('ready-to-show',()=>{if(!process.env.MDTEX_TEST)win.show()})
