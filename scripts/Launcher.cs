@@ -4,8 +4,8 @@ using System.IO;
 using System.Windows.Forms;
 using System.Reflection;
 using System.Text;
-[assembly: AssemblyVersion("0.4.1.0")]
-[assembly: AssemblyFileVersion("0.4.1.0")]
+[assembly: AssemblyVersion("0.4.2.0")]
+[assembly: AssemblyFileVersion("0.4.2.0")]
 [assembly: AssemblyProduct("MDTeX Editor")]
 internal static class Launcher {
   private static string Quote(string value) {

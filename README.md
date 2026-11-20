@@ -1,14 +1,22 @@
-# MDTeX Editor 0.4.1
+# MDTeX Editor 0.4.2
 
 本地 Markdown 阅读与编辑器，黑白灰界面。支持所见即所得、只读阅读、源码及双向分屏，包含数学公式、表格、多语言代码高亮、图片、文件树和多文档标签页。无需账号，不上传文档。版本变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 运行
 
-**普通用户：[下载 Windows 免安装版](https://github.com/Ing-hhhc-k/MDTeX-Editor/releases/latest)。** 在发布页的 Assets 中下载 `MDTeX-Editor-0.4.1-win-x64.zip`，完整解压后双击最外层 `MDTeX.exe`。
+**普通用户：[下载 Windows 免安装版](https://github.com/Ing-hhhc-k/MDTeX-Editor/releases/latest)。** 在发布页的 Assets 中下载 `MDTeX-Editor-0.4.2-win-x64.zip`，完整解压后双击最外层 `MDTeX.exe`。
 
 **启动入口就在项目最外层：双击 `MDTeX.exe`。** 源码首次使用请先运行下方的 `npm install` 和 `npm run dist`，生成运行文件。
 
-本地构建后，供其他人使用的 Windows 免安装压缩包也会放在项目最外层：**`MDTeX-Editor-0.4.1-win-x64.zip`**。解压后的最外层直接有 `MDTeX.exe`，无需再进入子文件夹；运行依赖放在 `_internal` 中。不能只下载或复制单独的启动 exe。
+本地构建后，供其他人使用的 Windows 免安装压缩包也会放在项目最外层：**`MDTeX-Editor-0.4.2-win-x64.zip`**。解压后的最外层直接有 `MDTeX.exe`，无需再进入子文件夹；运行依赖放在 `_internal` 中。不能只下载或复制单独的启动 exe。
+
+## 主题与版本更新
+
+顶部可选择浅色、暗色或跟随系统，主题会自动记忆，覆盖侧栏、编辑/阅读/源码、表格、公式和弹窗。暗色主题不反转图片颜色。
+
+程序启动后会检查 GitHub 最新正式版（可在“检查更新”中关闭），发现新版时顶部显示提示。点击“检查更新 → 下载新版 ZIP”，保存文档后完整解压新版，退出旧版并运行新文件夹最外层 MDTeX.exe。文档、草稿与主题设置保存在原路径或用户数据目录，不随程序文件夹替换。确认新版本正常后再删除旧程序文件夹。
+
+暂不在程序内自动覆盖运行中的文件。网络受限时仍可使用 README 顶部的固定 Releases 下载入口；只有公开发布的 Windows ZIP 上传完成后才提示可下载。
 
 ## 三种文件流程
 

@@ -6,4 +6,5 @@ import './style.css'
 import './view.css'
 import './workspace.css'
 import './tabs.css'
+import './theme.css'
 createRoot(document.getElementById('root')).render(<App />)

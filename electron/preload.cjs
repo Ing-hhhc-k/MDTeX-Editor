@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron')
 contextBridge.exposeInMainWorld('desktop', {
   open: () => ipcRenderer.invoke('file:open'),
+  setTheme: theme => ipcRenderer.invoke('app:theme',theme),
+  checkUpdate: options => ipcRenderer.invoke('app:check-update',options),
+  downloadUpdate: () => ipcRenderer.invoke('app:download-update'),
   save: data => ipcRenderer.invoke('file:save', data),
   draftSync: data => ipcRenderer.invoke('draft:sync', data),
   detachDraft: data => ipcRenderer.invoke('draft:detach', data),
