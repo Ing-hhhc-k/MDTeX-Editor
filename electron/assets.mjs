@@ -47,7 +47,7 @@ export async function readImage(src,baseDir) {
   if(bytes.length>20*1024*1024)throw new Error('图片超过 20 MB')
   return {bytes,extension:imageType(bytes)}
 }
-export async function collectAssets(text,baseDir) {
+export async function collectAssets(text,baseDir,{inline=false}={}) {
   const replacements=[],files=new Map();let total=0
   for(const node of imageNodes(text)) {
     if(remoteImage(node.url))continue
@@ -57,7 +57,8 @@ export async function collectAssets(text,baseDir) {
     const relative='picture/'+name
     if(!files.has(relative)){total+=asset.bytes.length;if(total>200*1024*1024)throw new Error('图片总量超过 200 MB');files.set(relative,asset.bytes)}
     const title=node.title?' "'+node.title.replace(/["\\]/g,'\\$&')+'"':''
-    const replacement=node.type==='definition'?`[${node.label||node.identifier}]: <${relative}>${title}`:`![${(node.alt||'').replace(/[\[\]\\]/g,'\\$&')}](<${relative}>${title})`
+    const url=inline?'data:image/'+(asset.extension==='jpg'?'jpeg':asset.extension)+';base64,'+asset.bytes.toString('base64'):relative
+    const replacement=node.type==='definition'?`[${node.label||node.identifier}]: <${url}>${title}`:`![${(node.alt||'').replace(/[\[\]\\]/g,'\\$&')}](<${url}>${title})`
     replacements.push({start:node.position.start.offset,end:node.position.end.offset,text:replacement})
   }
   let result=text

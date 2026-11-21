@@ -30,6 +30,14 @@ jobs:
         run: node tests/numbering-ui.cjs
       - name: Verify packaged in-place update
         run: node tests/update-install.cjs
+      - name: Verify packaged formula insertion
+        env:
+          MDTEX_PACKAGED_TEST: '1'
+        run: node tests/formula-caret.cjs
+      - name: Verify packaged draft scope
+        env:
+          MDTEX_PACKAGED_TEST: '1'
+        run: node tests/draft-scope.cjs
       - name: Publish Windows ZIP
         shell: pwsh
         env:

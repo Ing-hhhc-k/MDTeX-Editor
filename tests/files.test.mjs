@@ -31,6 +31,29 @@ test('Markdown AST collects local image references, deduplicates bytes, skips co
  assert.equal(imageNodes(result.text).filter(n=>n.url.startsWith('picture/')).length,3)
  assert.ok(!result.text.includes('data:image'))
 })
+
+test('existing local files never create draft directories, including image import and save',async()=>{
+ const s=await service(),file=path.join(s.root,'opened.md'),id='external-file-001'
+ await fs.writeFile(file,'# 已有文件');s.setOpen([file]);await s.call('file:open')
+ assert.equal((await s.call('draft:sync',{id,path:file,text:'edited'})).skipped,true)
+ const image=await s.call('image:import',{id,path:file,isDraft:false,data});assert.equal(image.src,data)
+ await assert.rejects(fs.stat(path.join(s.root,'drafts')),{code:'ENOENT'})
+ s.setSave(path.join(s.root,'export.zip'));await s.call('file:export',{id,path:file,text:'![x]('+image.src+')',name:'opened.md'})
+ assert.equal(Object.keys(unzipSync(await fs.readFile(path.join(s.root,'export.zip')))).length,2)
+ s.setChoice(0);const result=await s.call('file:save',{id,path:file,text:'![x]('+image.src+')',origin:'file'})
+ assert.match(result.text,/picture\//);assert.equal((await fs.readdir(path.join(s.root,'picture'))).length,1)
+ await assert.rejects(fs.stat(path.join(s.root,'drafts')),{code:'ENOENT'})
+})
+
+test('saved new documents cannot be resurrected by a delayed autosave; sessions are not drafts',async()=>{
+ const s=await service(),id='new-unsaved-001';await s.call('draft:sync',{id,isDraft:true,text:'# 新建'})
+ s.setSave(path.join(s.root,'new.md'));await s.call('file:save',{id,text:'# 新建',name:'new.md',origin:'draft'})
+ assert.equal((await s.call('draft:sync',{id,isDraft:true,text:'late'})).skipped,true)
+ await assert.rejects(fs.stat(path.join(s.root,'drafts',id)),{code:'ENOENT'})
+ const session='session-only-001';assert.equal((await s.call('draft:sync',{id:session,isDraft:false,text:'hello'})).skipped,true)
+ assert.equal((await s.call('image:import',{id:session,isDraft:false,data})).src,data)
+ await assert.rejects(fs.stat(path.join(s.root,'drafts',session)),{code:'ENOENT'})
+})
 test('draft image resources survive cancellation and are removed only after a successful folder save',async()=>{
  const s=await service(),id='draft-case-00001'
  const staged=await s.call('draft:sync',{id,text:'# 新文档'})
@@ -60,12 +83,12 @@ test('external local images are copied, standalone documents can save in place o
  assert.equal(bundle.path,path.join(s.root,'existing','existing.md'));assert.equal(await fs.readFile(file,'utf8'),previous)
  assert.match(bundle.text,/第二次修改/);assert.deepEqual(await fs.readFile(external),png)
 })
-test('missing local images and cancelled standalone prompt leave original file and staging intact',async()=>{
+test('missing images and cancelled save leave the local original intact without staging',async()=>{
  const s=await service(),file=path.join(s.root,'keep.md'),id='failure-00001';await fs.writeFile(file,'ORIGINAL')
  s.setOpen([file]);await s.call('file:open');const stage=await s.call('draft:sync',{id,path:file,text:'UNSAVED'})
  s.setChoice(2);assert.equal(await s.call('file:save',{id,path:file,text:'![x](missing.png)',origin:'file'}),null)
  s.setChoice(0);await assert.rejects(s.call('file:save',{id,path:file,text:'![x](missing.png)',origin:'file'}),/无法整理图片/)
- assert.equal(await fs.readFile(file,'utf8'),'ORIGINAL');assert.equal(await fs.readFile(path.join(stage.directory,'draft.md'),'utf8'),'UNSAVED')
+ assert.equal(stage.skipped,true);assert.equal(await fs.readFile(file,'utf8'),'ORIGINAL');await assert.rejects(fs.stat(path.join(s.root,'drafts',id)),{code:'ENOENT'})
 })
 test('ZIP export contains current Markdown and picture resources without modifying originals or temporary drafts',async()=>{
  const s=await service(),id='archive-00001';const stage=await s.call('draft:sync',{id,text:'DRAFT'})
@@ -91,13 +114,13 @@ test('external file changes require explicit overwrite before saving',async()=>{
 test('detached drafts copy relative local images and can be saved after the source Markdown is deleted',async()=>{
  const s=await service(),file=path.join(s.root,'deleted.md'),id='deleted-00001';await fs.writeFile(file,'# 原文');await fs.writeFile(path.join(s.root,'image.png'),png);s.setOpen([file]);await s.call('file:open');await fs.unlink(file)
  const draft=await s.call('draft:detach',{id,path:file,text:'# 尚未保存的修改\n\n![x](image.png)'})
- assert.match(draft.text,/picture\//);assert.equal(await s.call('image:preview',{id,src:imageNodes(draft.text)[0].url}),data)
+ assert.match(draft.text,/data:image\/png;base64,/);await assert.rejects(fs.stat(path.join(s.root,'drafts',id)),{code:'ENOENT'});assert.equal(await s.call('image:preview',{id,src:imageNodes(draft.text)[0].url}),data)
  s.setSave(path.join(s.root,'rescued.md'));const result=await s.call('file:save',{id,text:draft.text,name:'rescued.md',origin:'draft'});assert.match(await fs.readFile(result.path,'utf8'),/尚未保存的修改/)
 })
 test('draft deletion clears only its own staging and blocks autosave resurrection',async()=>{
  const s=await service(),id='delete-draft-001',other='delete-draft-002',file=path.join(s.root,'original.md');await fs.writeFile(file,'SAVED');s.setOpen([file]);await s.call('file:open')
- const stage=await s.call('draft:sync',{id,path:file,text:'UNSAVED'});const otherStage=await s.call('draft:sync',{id:other,text:'KEEP'})
- await s.call('image:import',{id,path:file,data});await s.call('draft:delete',{id});await assert.rejects(fs.stat(stage.directory),{code:'ENOENT'});assert.equal(await fs.readFile(file,'utf8'),'SAVED');assert.equal(await fs.readFile(path.join(otherStage.directory,'draft.md'),'utf8'),'KEEP')
+ const stage=await s.call('draft:sync',{id,isDraft:true,text:'UNSAVED'});const otherStage=await s.call('draft:sync',{id:other,text:'KEEP'})
+ await s.call('image:import',{id,isDraft:true,data});await s.call('draft:delete',{id});await assert.rejects(fs.stat(stage.directory),{code:'ENOENT'});assert.equal(await fs.readFile(file,'utf8'),'SAVED');assert.equal(await fs.readFile(path.join(otherStage.directory,'draft.md'),'utf8'),'KEEP')
  assert.equal((await s.call('draft:sync',{id,text:'late write'})).deleted,true);await assert.rejects(fs.stat(stage.directory),{code:'ENOENT'});await assert.rejects(s.call('image:import',{id,data}),/草稿已删除/)
  await assert.rejects(s.call('draft:delete',{id:'../../original.md'}),/标识/)
 })

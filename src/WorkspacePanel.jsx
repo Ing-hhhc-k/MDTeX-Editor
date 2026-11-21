@@ -13,7 +13,7 @@ export default function WorkspacePanel({root,refreshKey,onOpen,onRename,onDelete
     try{
       if(action.type==='create'){if(!name.trim()||/[\\/:*?"<>|]/.test(name))throw new Error('请输入有效文件名');const dir=action.entry?.relative||'';onOpen(await api.create(root.path,dir?dir+'/'+name:name))}
       if(action.type==='rename')onRename(await api.rename(root.path,action.entry.relative,name))
-      if(action.type==='delete'){const result=await api.delete(root.path,action.entry.relative);await onDelete(result.path);notify('文档已移入回收站，未保存内容保留为草稿')}
+      if(action.type==='delete'){const result=await api.delete(root.path,action.entry.relative);await onDelete(result.path);notify('文档已移入回收站，当前编辑内容保留在标签页中，可另存为')}
       setAction(null);await refresh()
     }catch(e){notify(e.message)}finally{setWorking(false)}
   }

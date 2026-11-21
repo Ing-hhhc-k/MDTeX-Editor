@@ -1,6 +1,6 @@
 {
   "name": "mdtex-editor",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -20,7 +20,8 @@
     "test:v043": "npm run build && node tests/v043.cjs",
     "test:v05": "npm run build && node tests/v05.cjs",
     "test:update": "npm run dist && node tests/update-install.cjs",
-    "test:numbering": "npm run build && node tests/numbering-ui.cjs"
+    "test:numbering": "npm run build && node tests/numbering-ui.cjs",
+    "test:formula": "npm run build && node tests/formula-caret.cjs"
   },
   "dependencies": {
     "@tiptap/core": "^3.0.0",

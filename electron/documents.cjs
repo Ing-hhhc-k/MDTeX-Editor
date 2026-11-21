@@ -4,7 +4,7 @@ const {randomUUID,createHash}=require('node:crypto')
 async function createDocuments({app,ipcMain,dialog,shell,getWindow,authorizedPaths}) {
   const assets=await import('./assets.mjs')
   const base=path.join(app.getPath('userData'),'drafts'),registryFile=path.join(app.getPath('userData'),'files.json')
-  const known=new Set(),roots=new Set(),queues=new Map(),deletedDrafts=new Set()
+  const known=new Set(),roots=new Set(),queues=new Map(),deletedDrafts=new Set(),savedDrafts=new Set()
   try{const registry=JSON.parse(await fs.readFile(registryFile,'utf8'));for(const f of registry.files||[])known.add(f);for(const r of registry.roots||[])roots.add(r)}catch{}
   const persist=async()=>{await fs.mkdir(path.dirname(registryFile),{recursive:true});await assets.atomicWrite(registryFile,Buffer.from(JSON.stringify({files:[...known],roots:[...roots]})))}
   const remember=async file=>{authorizedPaths.add(file);known.add(file);await persist()}
@@ -15,10 +15,10 @@ async function createDocuments({app,ipcMain,dialog,shell,getWindow,authorizedPat
   const handle=(name,fn)=>ipcMain.handle(name,async(event,data)=>{if(event.sender!==getWindow().webContents)throw new Error('无效来源');return fn(data)})
   const sourceBase=data=>{ensurePath(data.path);return data.path?path.dirname(data.path):dirFor(data.id)}
   async function cleanup(id){const target=dirFor(id);if(path.dirname(target)!==base)throw new Error('无效临时目录');await fs.rm(target,{recursive:true,force:true})}
-  handle('draft:sync',data=>lock(data.id,async()=>{if(deletedDrafts.has(data.id))return {deleted:true};sourceBase(data);const dir=dirFor(data.id);await fs.mkdir(dir,{recursive:true});await assets.atomicWrite(path.join(dir,'draft.md'),Buffer.from(data.text));await assets.atomicWrite(path.join(dir,'meta.json'),Buffer.from(JSON.stringify({sourcePath:data.path||null})));return {directory:dir}}))
+  handle('draft:sync',data=>lock(data.id,async()=>{if(deletedDrafts.has(data.id))return {deleted:true};if(data.path||data.isDraft===false||savedDrafts.has(data.id))return {skipped:true};sourceBase(data);const dir=dirFor(data.id);await fs.mkdir(dir,{recursive:true});await assets.atomicWrite(path.join(dir,'draft.md'),Buffer.from(data.text));await assets.atomicWrite(path.join(dir,'meta.json'),Buffer.from(JSON.stringify({sourcePath:null})));return {directory:dir}}))
   handle('draft:delete',data=>{const target=dirFor(data.id);if(path.dirname(target)!==base)throw new Error('无效临时目录');deletedDrafts.add(data.id);return lock(data.id,async()=>{try{const info=await fs.lstat(target);if(info.isSymbolicLink()||!info.isDirectory())throw new Error('草稿目录不是普通文件夹');await shell.trashItem(target)}catch(e){if(e.code!=='ENOENT')throw e}return {deleted:true}}).catch(error=>{deletedDrafts.delete(data.id);throw error})})
-  handle('draft:detach',data=>lock(data.id,async()=>{if(deletedDrafts.has(data.id))throw new Error('草稿已删除');const collected=await assets.collectAssets(data.text,sourceBase(data));const dir=dirFor(data.id);await assets.writeDocument(path.join(dir,'draft.md'),collected);return {text:collected.text}}))
-  handle('image:import',data=>lock(data.id,async()=>{if(deletedDrafts.has(data.id))throw new Error('草稿已删除');sourceBase(data);const {bytes,extension}=await assets.readImage(data.data,dirFor(data.id));const dir=path.join(dirFor(data.id),'picture');await fs.mkdir(dir,{recursive:true});const filename=createHash('sha256').update(bytes).digest('hex').slice(0,24)+'.'+extension;const file=path.join(dir,filename);await fs.writeFile(file,bytes);return {src:pathToFileURL(file).href}}))
+  handle('draft:detach',data=>lock(data.id,async()=>{if(deletedDrafts.has(data.id))throw new Error('草稿已删除');const collected=await assets.collectAssets(data.text,sourceBase(data),{inline:true});return {text:collected.text}}))
+  handle('image:import',data=>lock(data.id,async()=>{if(deletedDrafts.has(data.id))throw new Error('草稿已删除');sourceBase(data);const {bytes,extension}=await assets.readImage(data.data,dirFor(data.id));if(data.path||data.isDraft===false||savedDrafts.has(data.id))return {src:'data:image/'+(extension==='jpg'?'jpeg':extension)+';base64,'+bytes.toString('base64')};const dir=path.join(dirFor(data.id),'picture');await fs.mkdir(dir,{recursive:true});const filename=createHash('sha256').update(bytes).digest('hex').slice(0,24)+'.'+extension;const file=path.join(dir,filename);await fs.writeFile(file,bytes);return {src:pathToFileURL(file).href}}))
   handle('image:preview',async data=>{
     if(assets.remoteImage(data.src)||/^data:/i.test(data.src))return data.src
     const dir=sourceBase(data),image=await assets.readImage(data.src,dir)
@@ -45,7 +45,7 @@ async function createDocuments({app,ipcMain,dialog,shell,getWindow,authorizedPat
     if(target===original&&typeof data.savedText==='string'&&(await fs.readFile(original,'utf8'))!==data.savedText){const choice=await dialog.showMessageBox(getWindow(),{type:'warning',title:'源文件已变化',message:'文档在其他程序中发生了修改，是否覆盖？',detail:'取消后可以另存为新文件，避免覆盖外部修改。',buttons:['取消','覆盖'],defaultId:0,cancelId:0});if(choice.response!==1)return null}
     if(target!==original){try{await fs.stat(target);const choice=await dialog.showMessageBox(getWindow(),{type:'warning',message:'目标文档已存在，是否覆盖？',buttons:['取消','覆盖'],defaultId:0,cancelId:0});if(choice.response!==1)return null}catch(e){if(e.code!=='ENOENT')throw e}}
     const collected=await assets.collectAssets(data.text,originalBase)
-    await assets.writeDocument(target,collected);await remember(target)
+    await assets.writeDocument(target,collected);await remember(target);savedDrafts.add(data.id)
     let workspaceRoot=data.workspaceRoot&&roots.has(data.workspaceRoot.path)?data.workspaceRoot:null
     if(bundle)workspaceRoot=await addRoot(path.dirname(target))
     const warnings=[];try{await cleanup(data.id)}catch{warnings.push('文档已保存，临时草稿清理失败，将在下次保存时重试')}
