@@ -4,7 +4,7 @@ const {_electron}=require('@playwright/test'),assert=require('node:assert/strict
  const app=await _electron.launch({executablePath:process.env.MDTEX_PACKAGED_TEST?require('node:path').resolve('MDTeX.exe'):undefined,args:process.env.MDTEX_PACKAGED_TEST?[]:['.'],env,timeout:60000})
  try{
   const page=await app.firstWindow(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.waitForSelector('.prose');await app.evaluate(({BrowserWindow,dialog})=>{const win=BrowserWindow.getAllWindows()[0];win.show();win.focus();dialog.showMessageBoxSync=()=>1})
-  const auto=page.getByRole('button',{name:'自动编号',exact:true}),source=page.getByRole('textbox',{name:'Markdown 源码'}),mode=name=>page.getByRole('button',{name,exact:true}).click()
+  const auto=page.getByRole('button',{name:'自动编号',exact:true}),source=page.getByRole('textbox',{name:'Markdown 源码'}),mode=async name=>{await page.getByRole('button',{name,exact:true}).click();await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))}
   const load=async text=>{await mode('源码');await source.fill(text);await mode('编辑')}
   const titles=()=>page.locator('.prose h1,.prose h2,.prose h3').allTextContents()
   const selectHeading=async(level,index)=>{
