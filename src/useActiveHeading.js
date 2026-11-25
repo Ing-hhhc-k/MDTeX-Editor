@@ -24,6 +24,7 @@ export default function useActiveHeading({editor,richRef,sourceRef,mode,markdown
   function selectHeading(pos,targetTop){navigation.current={pos,targetTop,active,until:performance.now()+3000};setPosition(pos)}
   useEffect(()=>{
     if(!editor)return
+    const measuredDoc=editor.state.doc
     const headings=[];editor.state.doc.descendants((node,pos)=>{if(node.type.name==='heading')headings.push(pos)})
     if(!headings.length){setPosition(null);return}
     const pane=richRef.current,input=sourceRef.current;let frame=0,mirror=null,tops=[],unlockTimer
@@ -42,6 +43,7 @@ export default function useActiveHeading({editor,richRef,sourceRef,mode,markdown
     }
     function measure(){
       frame=0;let index=0
+      if(editor.isDestroyed||editor.state.doc!==measuredDoc)return
       const pending=navigation.current
       if(pending&&pending.active===active&&performance.now()<pending.until){
         if(pending.targetTop===undefined||!pane||Math.abs(pane.scrollTop-pending.targetTop)>2){setPosition(pending.pos);clearTimeout(unlockTimer);unlockTimer=setTimeout(schedule,Math.max(16,pending.until-performance.now()+10));return}
@@ -53,7 +55,7 @@ export default function useActiveHeading({editor,richRef,sourceRef,mode,markdown
         if(input.scrollTop>0&&input.scrollTop+input.clientHeight>=input.scrollHeight-2)index=headings.length-1
       }else if(mode!=='source'&&pane){
         const top=pane.getBoundingClientRect().top+65
-        for(let i=0;i<headings.length;i++){const el=editor.view.nodeDOM(headings[i]);if(el?.getBoundingClientRect().top<=top)index=i}
+        for(let i=0;i<headings.length;i++){const el=editor.view.nodeDOM(headings[i]);if(typeof el?.getBoundingClientRect==='function'&&el.getBoundingClientRect().top<=top)index=i}
         if(pane.scrollTop>0&&pane.scrollTop+pane.clientHeight>=pane.scrollHeight-2)index=headings.length-1
       }
       setPosition(headings[index])

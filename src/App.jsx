@@ -312,7 +312,7 @@ export default function App() {
       if(current.current.doc.id!==id)return
       const headings=[];editor.state.doc.descendants((node,pos)=>{if(node.type.name==='heading')headings.push(pos)})
       const pos=headings[index],el=pos===undefined?null:editor.view.nodeDOM(pos),pane=richRef.current
-      if(!el||!pane)return
+      if(typeof el?.getBoundingClientRect!=='function'||!pane)return
       const top=Math.max(0,Math.min(pane.scrollHeight-pane.clientHeight,pane.scrollTop+el.getBoundingClientRect().top-pane.getBoundingClientRect().top-55))
       selectHeading(pos,top)
       pane.scrollTo({top,behavior:'smooth'})
