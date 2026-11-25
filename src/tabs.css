@@ -11,3 +11,8 @@
 .folder-heading>span{display:flex;gap:6px;align-items:center;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
 @media(max-width:1000px){.draft-status{display:none}.app-header{padding:0 14px}.document-tab{min-width:130px}.header-actions .button{font-size:11px}.status-bar>div{gap:4px}}
 @media print{.document-tabs{display:none!important}}
+
+.outline button.outline-active{background:var(--tone-e8e8e8,#e8e8e8);color:var(--tone-333333,#333);box-shadow:inset 3px 0 var(--tone-777777,#777);font-weight:600}
+.outline button.outline-active .outline-dot{background:currentColor}
+.external-change{display:flex;align-items:center;gap:10px;padding:10px 20px;background:var(--tone-f3f3f3,#f3f3f3);border-bottom:1px solid var(--border);font-size:12.5px;flex-wrap:wrap;flex-shrink:0}
+.external-change span{flex:1;min-width:200px}.external-change button{border:1px solid var(--tone-dddddd,#ddd);border-radius:4px;padding:5px 8px;background:var(--tone-ffffff,#fff)}

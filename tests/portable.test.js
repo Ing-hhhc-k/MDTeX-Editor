@@ -25,8 +25,8 @@ test('legacy migration is non-destructive; copied data restores text, preference
   const next=configureStorage(app,{root:nextRoot,legacy})
   assert.ok(next.bootstrap.session.docs[0].markdown.includes(pathToFileURL(next.directory).href))
   const handlers=new Map(),sender={};next.register({ipcMain:{on:(key,fn)=>handlers.set(key,fn),handle:(key,fn)=>handlers.set(key,fn)},getWindow:()=>({webContents:sender}),shell:{}})
-  const e={sender};handlers.get('storage:session')(e,{docs:[{id:'test-doc',markdown:'最新文字'}],active:'test-doc'});assert.equal(e.returnValue.ok,true)
-  assert.equal(JSON.parse(await fs.readFile(path.join(next.directory,'session.json'),'utf8')).docs[0].markdown,'最新文字')
+  const e={sender};handlers.get('storage:session')(e,{docs:[{id:'test-doc',path:path.join(next.directory,'documents','test-doc','test.md'),markdown:'最新文字',savedMarkdown:'旧文字',dirty:true}],active:'test-doc'});assert.equal(e.returnValue.ok,true)
+  const saved=JSON.parse(await fs.readFile(path.join(next.directory,'session.json'),'utf8'));assert.equal(saved.format,'manual-v1');assert.equal(saved.docs[0].path,path.join(next.directory,'documents','test-doc','test.md'));assert.equal(saved.docs[0].markdown,undefined);assert.equal(saved.docs[0].savedMarkdown,undefined);assert.equal(saved.docs[0].dirty,undefined)
   assert.equal(remap('D:\\external\\test.md',legacy,next.directory),'D:\\external\\test.md')
   await fs.writeFile(path.join(next.directory,'session.json'),'invalid');assert.throws(()=>configureStorage(app,{root:nextRoot,legacy}),/数据文件无法读取/)
  }finally{await fs.rm(temp,{recursive:true,force:true})}

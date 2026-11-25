@@ -12,3 +12,6 @@
 .formula-tabs{flex-wrap:wrap;gap:0}.formula-tabs button{padding:8px 11px}.formula-templates{max-height:250px}.format-bar{overflow-x:auto;flex-shrink:0}.toolbar-hint{display:none}
 .sidebar{width:260px}.prose{font-size:16px}.mode-split .prose{font-size:15px}.tool{min-width:30px}.brand-mark{background:var(--tone-f5f5f5,#f5f5f5);color:var(--tone-222,#222)}.button.primary{background:var(--tone-333,#333)}.button.primary:hover{background:var(--tone-111,#111)}
 @media(max-width:1100px){.sidebar{width:220px}.insert-tools .tool{font-size:0;gap:0}.brand-caption{display:none}}
+
+.table-header-option{display:flex;align-items:center;gap:7px;font-size:13px;margin:0 0 10px}.table-header-option input{accent-color:var(--text)}
+.prose table.ProseMirror-selectednode,.prose .tableWrapper.ProseMirror-selectednode{outline:2px solid var(--tone-777,#777);outline-offset:2px}

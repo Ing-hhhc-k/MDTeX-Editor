@@ -1,5 +1,6 @@
 const fs=require('node:fs'),path=require('node:path')
 const {pathToFileURL}=require('node:url')
+const {sessionMetadata}=require('./session-metadata.cjs')
 function remap(value,from,to){
  if(!from||path.resolve(from)===path.resolve(to))return value
  if(typeof value==='string'){
@@ -33,13 +34,15 @@ function configureStorage(app,fixture){
  write('storage.json',{...metadata,root:directory})
  if(session)write('session.json',session)
  const bootstrap={session,preferences,previous,directory,previousUrl:pathToFileURL(previous+path.sep).href,directoryUrl:pathToFileURL(directory+path.sep).href,migratedFrom:metadata.migratedFrom||null}
+ let hydrate=data=>data
+ function setSession(data){const value=sessionMetadata(data);write('session.json',value);bootstrap.session=value;return value}
  function register({ipcMain,shell,getWindow}){
   const verify=e=>{if(e.sender!==getWindow()?.webContents)throw Error('无效来源')}
-  ipcMain.on('storage:bootstrap',(e)=>{verify(e);e.returnValue=bootstrap})
-  ipcMain.on('storage:session',(e,data)=>{try{verify(e);if(!Array.isArray(data?.docs)||!data.docs.length)throw Error('无效草稿列表');write('session.json',data);bootstrap.session=data;e.returnValue={ok:true}}catch(error){e.returnValue={error:error.message}}})
+  ipcMain.on('storage:bootstrap',(e)=>{verify(e);e.returnValue={...bootstrap,session:hydrate(bootstrap.session)}})
+  ipcMain.on('storage:session',(e,data)=>{try{verify(e);setSession(data);e.returnValue={ok:true}}catch(error){e.returnValue={error:error.message}}})
   ipcMain.handle('storage:preference',(e,{key,value})=>{verify(e);if(!['mdtex.theme','mdtex.view.v1','mdtex.autoUpdateCheck'].includes(key)||typeof value!=='string')throw Error('无效设置');preferences[key]=value;write('preferences.json',preferences)})
   ipcMain.handle('storage:open',async e=>{verify(e);const error=await shell.openPath(directory);if(error)throw Error(error)})
  }
- return {root,directory,register,bootstrap}
+ return {root,directory,register,bootstrap,setSession,setHydrator:fn=>{hydrate=fn}}
 }
 module.exports={configureStorage,remap}

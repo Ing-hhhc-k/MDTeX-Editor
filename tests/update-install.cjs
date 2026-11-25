@@ -10,7 +10,7 @@ const {_electron}=require('@playwright/test'),fs=require('node:fs/promises'),pat
  try{
   app=await _electron.launch({executablePath:path.join(root,'_internal/MDTeX.exe'),env,timeout:60000});const page=await app.firstWindow();await page.waitForSelector('.prose')
   await app.evaluate(({net,dialog,BrowserWindow},input)=>{
-   dialog.showMessageBoxSync=()=>1;BrowserWindow.getAllWindows()[0].showInactive()
+   dialog.showMessageBoxSync=()=>1;dialog.showMessageBox=async()=>({response:0});BrowserWindow.getAllWindows()[0].showInactive()
    const fetch=net.fetch.bind(net)
    net.fetch=async url=>String(url).includes('/releases/latest')?{ok:true,json:async()=>({tag_name:'v'+input.nextVersion,body:'隔离更新测试',assets:[{state:'uploaded',digest:input.digest,size:input.size,browser_download_url:`https://github.com/Ing-hhhc-k/MDTeX-Editor/releases/download/v${input.nextVersion}/MDTeX-Editor-${input.nextVersion}-win-x64.zip`}]})}:fetch(input.archiveURL)
   },{digest,archiveURL:require('node:url').pathToFileURL(archive).href,size:bytes.length,nextVersion})
@@ -26,7 +26,7 @@ const {_electron}=require('@playwright/test'),fs=require('node:fs/promises'),pat
    await new Promise(r=>setTimeout(r,500))
   }
   assert.equal(status?.state,'success',JSON.stringify(status));assert.equal(JSON.parse(await fs.readFile(path.join(root,'_internal/resources/app/package.json'),'utf8')).version,nextVersion)
-  const session=JSON.parse(await fs.readFile(path.join(data,'session.json'),'utf8'));assert.match(session.docs.find(d=>d.id===id).markdown,/最后一次编辑/)
+  const session=JSON.parse(await fs.readFile(path.join(data,'session.json'),'utf8'));const doc=session.docs.find(d=>d.id===id);assert.equal(doc.markdown,undefined);assert.match(await fs.readFile(doc.path,'utf8'),/最后一次编辑/)
   await assert.rejects(fs.stat(path.join(work,'backup')),{code:'ENOENT'});await assert.rejects(fs.stat(path.join(work,'stage')),{code:'ENOENT'})
   console.log('PASS: packaged UI one-click download, SHA256 validation, app exit, in-place replacement, real restart/renderer-ready acknowledgement, draft retention, old-file cleanup')
  }finally{

@@ -34,10 +34,42 @@ jobs:
         env:
           MDTEX_PACKAGED_TEST: '1'
         run: node tests/formula-caret.cjs
-      - name: Verify packaged draft scope
+      - name: Verify packaged manual save
         env:
           MDTEX_PACKAGED_TEST: '1'
         run: node tests/draft-scope.cjs
+      - name: Verify packaged table editing
+        env:
+          MDTEX_PACKAGED_TEST: '1'
+        run: node tests/tables.cjs
+      - name: Verify packaged code blocks
+        env:
+          MDTEX_PACKAGED_TEST: '1'
+        run: node tests/code-blocks.cjs
+      - name: Verify packaged cursor and formulas
+        env:
+          MDTEX_PACKAGED_TEST: '1'
+        run: node tests/v054.cjs
+      - name: Verify packaged paragraph layout
+        env:
+          MDTEX_PACKAGED_TEST: '1'
+        run: node tests/paragraph-layout.cjs
+      - name: Verify packaged formula insertion modes
+        env:
+          MDTEX_PACKAGED_TEST: '1'
+        run: node tests/formula-modes.cjs
+      - name: Verify packaged legacy data migration
+        env:
+          MDTEX_PACKAGED_TEST: '1'
+        run: node tests/v05.cjs
+      - name: Verify packaged outline and external changes
+        env:
+          MDTEX_PACKAGED_TEST: '1'
+        run: node tests/v055.cjs
+      - name: Verify packaged highlight, formula and table improvements
+        env:
+          MDTEX_PACKAGED_TEST: '1'
+        run: node tests/v055-enhancements.cjs
       - name: Publish Windows ZIP
         shell: pwsh
         env:

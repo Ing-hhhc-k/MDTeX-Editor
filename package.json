@@ -1,6 +1,6 @@
 {
   "name": "mdtex-editor",
-  "version": "0.5.2",
+  "version": "0.5.5",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -21,6 +21,13 @@
     "test:v05": "npm run build && node tests/v05.cjs",
     "test:update": "npm run dist && node tests/update-install.cjs",
     "test:numbering": "npm run build && node tests/numbering-ui.cjs",
+    "test:tables": "npm run build && node tests/tables.cjs",
+    "test:layout": "npm run build && node tests/paragraph-layout.cjs",
+    "test:v055-enhancements": "npm run build && node tests/v055-enhancements.cjs",
+    "test:v055": "npm run build && node tests/v055.cjs",
+    "test:v054": "npm run build && node tests/v054.cjs",
+    "test:code": "npm run build && node tests/code-blocks.cjs",
+    "test:formula-modes": "npm run build && node tests/formula-modes.cjs",
     "test:formula": "npm run build && node tests/formula-caret.cjs"
   },
   "dependencies": {
@@ -48,7 +55,9 @@
     "prosemirror-view": "^1.42.9",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@tiptap/extension-list": "^3.34.0"
+    "@tiptap/extension-list": "^3.34.0",
+    "@tiptap/extension-paragraph": "^3.0.0",
+    "@tiptap/extension-heading": "^3.0.0"
   },
   "devDependencies": {
     "@playwright/test": "1.51.1",

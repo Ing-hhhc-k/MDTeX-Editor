@@ -6,12 +6,33 @@ import {fromMarkdown} from 'mdast-util-from-markdown'
 import {zipSync} from 'fflate'
 
 export const remoteImage = src => /^(https?:)?\/\//i.test(src)
+const decodeAttribute = value => value.replace(/&(?:amp|quot|apos|lt|gt|#\d+|#x[\da-f]+);/gi, entity => {
+  const named = {amp:'&',quot:'"',apos:"'",lt:'<',gt:'>'}, key = entity.slice(1,-1).toLowerCase()
+  if (named[key]) return named[key]
+  const code = key.startsWith('#x') ? parseInt(key.slice(2),16) : parseInt(key.slice(1),10)
+  return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : entity
+})
 export function imageNodes(text) {
   const images=[],definitions=new Map(),references=new Set()
   function visit(node) {
     if(node.type==='image')images.push(node)
     if(node.type==='definition')definitions.set(node.identifier,node)
     if(node.type==='imageReference')references.add(node.identifier)
+    // Headerless tables are stored as Markdown HTML blocks. Only inspect AST
+    // HTML nodes so code examples and escaped tags never become attachments.
+    if(node.type==='html')for(const tag of node.value.matchAll(/<!--[\s\S]*?-->|<(script|style)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>|<\/?[a-z][\w:-]*\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi)) {
+      if(!/^<img\b/i.test(tag[0]))continue
+      const attrs = /([^\s=<>/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g
+      let attr; attrs.lastIndex = 4
+      while((attr=attrs.exec(tag[0]))) {
+        if(attr[1].toLowerCase()!=='src'||attr[2]===undefined&&attr[3]===undefined&&attr[4]===undefined)continue
+        const value=attr[2]??attr[3]??attr[4],quoted=attr[2]!==undefined||attr[3]!==undefined
+        const start=node.position.start.offset+tag.index+attr.index+attr[0].indexOf('=')+1
+        const prefix=attr[0].slice(attr[0].indexOf('=')+1).match(/^\s*/)[0].length
+        images.push({type:'htmlImage',url:decodeAttribute(value),position:{start:{offset:start+prefix},end:{offset:start+prefix+value.length+(quoted?2:0)}}})
+        break
+      }
+    }
     for(const child of node.children||[])visit(child)
   }
   visit(fromMarkdown(text))
@@ -58,7 +79,7 @@ export async function collectAssets(text,baseDir,{inline=false}={}) {
     if(!files.has(relative)){total+=asset.bytes.length;if(total>200*1024*1024)throw new Error('图片总量超过 200 MB');files.set(relative,asset.bytes)}
     const title=node.title?' "'+node.title.replace(/["\\]/g,'\\$&')+'"':''
     const url=inline?'data:image/'+(asset.extension==='jpg'?'jpeg':asset.extension)+';base64,'+asset.bytes.toString('base64'):relative
-    const replacement=node.type==='definition'?`[${node.label||node.identifier}]: <${url}>${title}`:`![${(node.alt||'').replace(/[\[\]\\]/g,'\\$&')}](<${url}>${title})`
+    const replacement=node.type==='htmlImage'?`"${url.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}"`:node.type==='definition'?`[${node.label||node.identifier}]: <${url}>${title}`:`![${(node.alt||'').replace(/[\[\]\\]/g,'\\$&')}](<${url}>${title})`
     replacements.push({start:node.position.start.offset,end:node.position.end.offset,text:replacement})
   }
   let result=text

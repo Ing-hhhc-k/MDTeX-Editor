@@ -1,0 +1,21 @@
+.prose .math-node.blockMath{text-align:center}
+.prose .math-node.blockMath .katex-display,.prose .math-node.blockMath .katex-display>.katex{text-align:inherit}
+.prose .math-node.blockMath .katex-display{margin:0}
+.alignment-tools .tool{flex-shrink:0}
+
+.formula-mode-picker{border:0;padding:0;margin:0 0 18px;display:flex;gap:12px;min-width:0}
+.formula-mode-picker legend{font-size:14px;font-weight:600;margin-bottom:10px}
+.formula-mode-picker label{flex:1;display:flex;align-items:center;gap:10px;cursor:pointer;border:1px solid var(--tone-dddddd,#ddd);border-radius:7px;padding:13px 16px;background:var(--tone-ffffff,#fff);min-width:0}
+.formula-mode-picker label.selected{border:2px solid var(--tone-797979,#797979);padding:12px 15px;background:var(--tone-f3f3f3,#f3f3f3)}
+.formula-mode-picker input{width:17px;height:17px;margin:0;accent-color:var(--tone-696969,#696969);flex-shrink:0}
+.formula-mode-picker strong{display:block;font-size:15px;font-weight:600;margin-bottom:5px}
+.formula-mode-picker small{font-size:12.5px;color:var(--tone-797979,#797979)}
+.formula-preview-math .katex-display,.formula-preview-math .katex-display>.katex{text-align:inherit}
+.formula-preview-context{font-size:15px;color:var(--tone-797979,#797979)}
+.formula-mode-summary{margin-right:auto;font-size:12px;line-height:1.6;color:var(--tone-797979,#797979);max-width:60%}
+@media(max-width:600px){.formula-mode-picker{flex-direction:column}.formula-mode-summary{max-width:45%}}
+
+.modal.formula-modal{display:flex;flex-direction:column;overflow:hidden}
+.formula-modal>header,.formula-modal>.formula-mode-picker,.formula-modal>.modal-footer{flex-shrink:0}
+.formula-modal .formula-content{min-height:0;overflow-y:auto;padding-right:4px;flex:1}
+.formula-modal>.modal-footer{margin-top:12px;padding-top:12px}

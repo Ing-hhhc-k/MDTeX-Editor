@@ -32,6 +32,20 @@ test('Markdown AST collects local image references, deduplicates bytes, skips co
  assert.ok(!result.text.includes('data:image'))
 })
 
+test('headerless HTML table images survive save, inline recovery and ZIP export; code tags stay literal',async()=>{
+ const root=await fixture();await fs.writeFile(path.join(root,'a & b.png'),png)
+ const html='<table><tr><td><p><strong>保留格式</strong></p><img alt="x > y" SRC = "a &amp; b.png"><img src=\''+data+'\'><img src=https://example.com/a.png></td></tr></table>'
+ const code='\n\n```html\n<img src="missing.png">\n```\n\n`<img src="missing-inline.png">`\n\n<!-- <img src="missing-comment.png"> -->\n\n<div title=\'<img src="missing-attribute.png">\'>text</div>\n\n<script>const example=\'<img src="missing-script.png">\'</script>'
+ const result=await collectAssets(html+code,root)
+ assert.equal(result.files.size,1);assert.equal(imageNodes(result.text).length,3)
+ assert.equal(imageNodes(result.text).filter(n=>n.url.startsWith('picture/')).length,2)
+ assert.match(result.text,/<strong>保留格式<\/strong>/);assert.match(result.text,/alt="x > y"/);assert.ok(result.text.endsWith(code));assert.match(result.text,/src="https:\/\/example.com\/a.png"|src=https:\/\/example.com\/a.png/)
+ const file=path.join(root,'saved','table.md');await writeDocument(file,result)
+ const recovered=await collectAssets(result.text,path.dirname(file),{inline:true});assert.equal(imageNodes(recovered.text).filter(n=>n.url===data).length,2)
+ const zip=path.join(root,'table.zip');await exportArchive(zip,'table.md',result)
+ const entries=unzipSync(await fs.readFile(zip));assert.equal(Object.keys(entries).length,2);assert.equal(strFromU8(entries['table/table.md']),result.text)
+})
+
 test('existing local files never create draft directories, including image import and save',async()=>{
  const s=await service(),file=path.join(s.root,'opened.md'),id='external-file-001'
  await fs.writeFile(file,'# 已有文件');s.setOpen([file]);await s.call('file:open')
@@ -54,24 +68,24 @@ test('saved new documents cannot be resurrected by a delayed autosave; sessions 
  assert.equal((await s.call('image:import',{id:session,isDraft:false,data})).src,data)
  await assert.rejects(fs.stat(path.join(s.root,'drafts',session)),{code:'ENOENT'})
 })
-test('draft image resources survive cancellation and are removed only after a successful folder save',async()=>{
- const s=await service(),id='draft-case-00001'
- const staged=await s.call('draft:sync',{id,text:'# 新文档'})
- const image=await s.call('image:import',{id,data})
- assert.deepEqual(await fs.readFile(fileURLToPath(image.src)),png)
+test('manual saves create default documents and picture only when requested; Save As cancellation changes nothing',async()=>{
+ const s=await service(),id='manual-save-0001'
+ const staged=await s.call('draft:sync',{id,text:'# 新文档'});assert.equal(staged.disabled,true)
+ const image=await s.call('image:import',{id,data});assert.equal(image.src,data)
+ await assert.rejects(fs.stat(path.join(s.root,'documents')),{code:'ENOENT'})
  const text='# 新文档\n\n![local]('+image.src+')\n\n![web](https://example.com/a.png)\n'
- await s.call('draft:sync',{id,text})
- assert.equal(await s.call('file:save',{id,text,name:'note.md',origin:'draft'}),null)
- assert.match(await fs.readFile(path.join(staged.directory,'draft.md'),'utf8'),/新文档/)
- s.setSave(path.join(s.root,'note.md'))
- const result=await s.call('file:save',{id,text,name:'note.md',origin:'draft'})
- assert.equal(result.path,path.join(s.root,'note','note.md'));assert.equal(result.workspaceRoot.path,path.dirname(result.path))
- assert.equal(await fs.readFile(result.path,'utf8'),result.text)
- assert.match(result.text,/picture\//);assert.match(result.text,/https:\/\/example.com\/a.png/)
- assert.equal((await fs.readdir(path.join(s.root,'note','picture'))).length,1)
- await assert.rejects(fs.stat(staged.directory),{code:'ENOENT'})
+ assert.equal(await s.call('file:save',{id,text,name:'note.md',saveAs:true}),null)
+ await assert.rejects(fs.stat(path.join(s.root,'documents')),{code:'ENOENT'})
+ const result=await s.call('file:save',{id,text,name:'note.md',origin:'untitled'})
+ assert.equal(result.path,path.join(s.root,'documents',id,'note.md'));assert.equal(result.origin,'data');assert.equal(result.workspaceRoot,null)
+ assert.equal(await fs.readFile(result.path,'utf8'),result.text);assert.match(result.text,/picture\//);assert.match(result.text,/https:\/\/example.com/)
+ assert.equal((await fs.readdir(path.join(s.root,'documents',id,'picture'))).length,1)
  const preview=await s.call('image:preview',{id,path:result.path,src:imageNodes(result.text).find(n=>n.url.startsWith('picture')).url});assert.equal(preview,data)
+ await s.call('draft:sync',{id,text:'NOT SAVED'});assert.equal(await fs.readFile(result.path,'utf8'),result.text)
+ s.setSave(path.join(s.root,'note.md'));const moved=await s.call('file:save',{id,path:result.path,text:result.text,name:'note.md',origin:'data',saveAs:true})
+ assert.equal(moved.path,path.join(s.root,'note','note.md'));assert.equal(await fs.readFile(result.path,'utf8'),result.text)
 })
+
 test('external local images are copied, standalone documents can save in place or copy into a bundle',async()=>{
  const s=await service(),file=path.join(s.root,'existing.md'),external=path.join(s.root,'external.png'),id='existing-00001'
  await fs.writeFile(external,png);await fs.writeFile(file,'# 原文\n\n![old](external.png)\n')
@@ -96,7 +110,7 @@ test('ZIP export contains current Markdown and picture resources without modifyi
  await s.call('file:export',{id,text,name:'文档.md'})
  const files=unzipSync(await fs.readFile(dest));assert.equal(Object.keys(files).length,2);assert.match(strFromU8(files['文档/文档.md']),/未保存内容/);assert.match(strFromU8(files['文档/文档.md']),/https:\/\/example.com/)
  const image=Object.keys(files).find(k=>k.startsWith('文档/picture/'));assert.deepEqual(Buffer.from(files[image]),png)
- assert.equal(await fs.readFile(path.join(stage.directory,'draft.md'),'utf8'),'DRAFT')
+ assert.equal(stage.disabled,true);await assert.rejects(fs.stat(path.join(s.root,'drafts',id)),{code:'ENOENT'})
 })
 test('multiple workspace roots remain independent and reject non-Markdown reads and traversal',async()=>{
  const s=await service(),a=path.join(s.root,'A'),b=path.join(s.root,'B');await fs.mkdir(a);await fs.mkdir(b)
@@ -117,13 +131,26 @@ test('detached drafts copy relative local images and can be saved after the sour
  assert.match(draft.text,/data:image\/png;base64,/);await assert.rejects(fs.stat(path.join(s.root,'drafts',id)),{code:'ENOENT'});assert.equal(await s.call('image:preview',{id,src:imageNodes(draft.text)[0].url}),data)
  s.setSave(path.join(s.root,'rescued.md'));const result=await s.call('file:save',{id,text:draft.text,name:'rescued.md',origin:'draft'});assert.match(await fs.readFile(result.path,'utf8'),/尚未保存的修改/)
 })
-test('draft deletion clears only its own staging and blocks autosave resurrection',async()=>{
- const s=await service(),id='delete-draft-001',other='delete-draft-002',file=path.join(s.root,'original.md');await fs.writeFile(file,'SAVED');s.setOpen([file]);await s.call('file:open')
- const stage=await s.call('draft:sync',{id,isDraft:true,text:'UNSAVED'});const otherStage=await s.call('draft:sync',{id:other,text:'KEEP'})
- await s.call('image:import',{id,isDraft:true,data});await s.call('draft:delete',{id});await assert.rejects(fs.stat(stage.directory),{code:'ENOENT'});assert.equal(await fs.readFile(file,'utf8'),'SAVED');assert.equal(await fs.readFile(path.join(otherStage.directory,'draft.md'),'utf8'),'KEEP')
- assert.equal((await s.call('draft:sync',{id,text:'late write'})).deleted,true);await assert.rejects(fs.stat(stage.directory),{code:'ENOENT'});await assert.rejects(s.call('image:import',{id,data}),/草稿已删除/)
+test('default document deletion removes its own folder and protects external files',async()=>{
+ const s=await service(),id='delete-local-001',other='delete-local-002',file=path.join(s.root,'original.md');await fs.writeFile(file,'SAVED');s.setOpen([file]);await s.call('file:open')
+ const first=await s.call('file:save',{id,text:'FIRST',name:'first.md'}),second=await s.call('file:save',{id:other,text:'KEEP',name:'second.md'})
+ await s.call('file:delete-default',{path:first.path});await assert.rejects(fs.stat(first.path),{code:'ENOENT'});assert.equal(await fs.readFile(second.path,'utf8'),'KEEP')
+ await assert.rejects(s.call('file:delete-default',{path:file}),/仅能/);assert.equal(await fs.readFile(file,'utf8'),'SAVED')
  await assert.rejects(s.call('draft:delete',{id:'../../original.md'}),/标识/)
 })
+
+test('legacy sessions recover unsaved work separately and hydrate from latest disk content',async()=>{
+ const s=await service(),file=path.join(s.root,'external.md');await fs.writeFile(file,'DISK');await s.documents.remember(file)
+ const migrated=await s.documents.initializeSession({docs:[{id:'external-0001',path:file,name:'external.md',markdown:'UNSAVED',savedMarkdown:'OLD'},{id:'legacy-0001',name:'draft.md',markdown:'![x]('+data+')'}],active:'external-0001',openIds:['external-0001','legacy-0001']})
+ assert.equal(migrated.format,'manual-v1');assert.equal(migrated.docs.length,3);assert.ok(migrated.docs.every(d=>!('markdown' in d)&&!('savedMarkdown' in d)))
+ const recovery=migrated.docs.find(d=>d.name.includes('恢复副本'));assert.equal(await fs.readFile(recovery.path,'utf8'),'UNSAVED');assert.equal(migrated.active,recovery.id);assert.equal(await fs.readFile(file,'utf8'),'DISK')
+ const draft=migrated.docs.find(d=>d.name==='draft.md');assert.match(await fs.readFile(draft.path,'utf8'),/picture\//)
+ await fs.writeFile(file,'NEW EXTERNAL');assert.equal(s.documents.hydrateSession(migrated).docs.find(d=>d.path===file).markdown,'NEW EXTERNAL')
+ assert.equal((await s.call('file:read',{path:file})).text,'NEW EXTERNAL')
+ const again=await s.documents.initializeSession(migrated);assert.equal(again.docs.length,3)
+ assert.ok((await fs.readFile(path.join(s.root,'migration-backups','session-before-manual-save.json'),'utf8')).includes('UNSAVED'))
+})
+
 test('workspace suffix restrictions cover create/read/rename/delete, including .markdown and disguised extensions',async()=>{
  const s=await service();s.setOpen([s.root]);await s.call('workspace:open');const dir=s.root
  for(const name of ['other.txt','other.markdown','photo.png','fake.md.txt'])await fs.writeFile(path.join(dir,name),'KEEP')
