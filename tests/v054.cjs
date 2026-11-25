@@ -51,7 +51,12 @@ const {_electron,expect}=require('@playwright/test'),assert=require('node:assert
   }
   await mode('源码');assert.match(await source.inputValue(),/x\+y/);assert.doesNotMatch(await source.inputValue(),/changed/);const sourceAt=(await source.inputValue()).indexOf('唯一位置90')+3;await sourceCaret(sourceAt);await source.evaluate(el=>el.scrollTop=el.scrollHeight*.85);const top=await source.evaluate(el=>el.scrollTop);await open();await page.getByRole('button',{name:'取消',exact:true}).click();await page.waitForTimeout(100);assert.equal(await source.evaluate(el=>el.selectionStart),sourceAt);assert.ok(Math.abs(await source.evaluate(el=>el.scrollTop)-top)<2)
   await mode('源码');const splitRaw=long.replace('## 第 0 节','第 0 节\n=====');await source.fill(splitRaw);await sourceCaret(splitRaw.indexOf('唯一位置90')+3);await mode('分屏')
-  await page.locator('.prose p').filter({hasText:'唯一位置90'}).click();const splitBefore=await richCursor();await open();await page.getByRole('button',{name:'取消',exact:true}).click();await page.waitForTimeout(100);assert.equal((await richCursor()).from,splitBefore.from);assert.equal((await richCursor()).text,splitBefore.text)
+  await page.locator('.prose p').filter({hasText:'唯一位置90'}).click()
+  // Native selectionchange may follow the click on hosted Windows desktops.
+  // Snapshot the intended paragraph once ProseMirror has received that event.
+  await expect.poll(async()=>(await richCursor()).text).toMatch(/唯一位置90/)
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))
+  const splitBefore=await richCursor();await open();await page.getByRole('button',{name:'取消',exact:true}).click();await page.waitForTimeout(100);assert.equal((await richCursor()).from,splitBefore.from);assert.equal((await richCursor()).text,splitBefore.text)
   assert.deepEqual(errors,[]);console.log('PASS: caret/selection/scroll mapping, shortcuts, repeated text, code positions, display math source/type/paste/CRLF, inline/code protection, formula cancel/Escape/close/backdrop and source restoration')
  }finally{await app.evaluate(({BrowserWindow,app})=>{for(const w of BrowserWindow.getAllWindows())w.destroy();app.quit()}).catch(()=>{});await app.close().catch(()=>{})}
 })().catch(error=>{console.error(error);process.exitCode=1})
